@@ -580,9 +580,14 @@ function onEdit(e) {
       
       if (sheetName === 'Orders') {
         // Orders sheet structure: Order ID, Customer Name, Contact Info, Address, Customer Type, Garment Types, Order Date, Delivery Date, Delivery Status...
+        let phone = (rowData[2] || '').toString().trim(); // Column C - Contact Info
+        
+        // Fix phone number format - ensure it has country code
+        phone = formatPhoneNumber(phone);
+        
         customerData = {
           name: (rowData[1] || '').toString().trim(),        // Column B - Customer Name
-          phone: (rowData[2] || '').toString().trim(),       // Column C - Contact Info 
+          phone: phone,                                      // Column C - Contact Info (formatted)
           item: (rowData[5] || '').toString().trim(),        // Column F - Garment Types
           orderDate: rowData[6] || '',                       // Column G - Order Date
           dueDate: rowData[7] || ''                          // Column H - Delivery Date
@@ -606,7 +611,8 @@ function onEdit(e) {
               const ordersData = ordersSheet.getDataRange().getValues();
               const orderRow = ordersData.find(row => (row[0] || '').toString().trim() === orderId);
               if (orderRow && orderRow[2]) {
-                customerData.phone = (orderRow[2] || '').toString().trim(); // Contact Info from Orders sheet
+                let phone = (orderRow[2] || '').toString().trim(); // Contact Info from Orders sheet
+                customerData.phone = formatPhoneNumber(phone);
               }
             }
           }
@@ -633,6 +639,18 @@ function onEdit(e) {
       
       console.log('About to call sendToWhatsApp with valid data');
       
+      // Validate parameters before calling sendToWhatsApp
+      if (!customerData || !sheet || !row || !notificationCol) {
+        console.error('Invalid parameters for sendToWhatsApp:', {
+          customerData: !!customerData,
+          sheet: !!sheet,
+          row: row,
+          notificationCol: notificationCol
+        });
+        markError(sheet, row, notificationCol, 'Invalid parameters');
+        return;
+      }
+      
       // Send to webhook
       sendToWhatsApp(customerData, sheet, row, notificationCol);
     }
@@ -641,13 +659,15 @@ function onEdit(e) {
     // Try to mark the cell with error if possible
     try {
       // Only attempt marking if an active sheet and selection exist
-      const sheet = SpreadsheetApp.getActiveSheet();
-      const range = sheet ? sheet.getActiveRange() : null;
-      if (sheet && range) {
-        const row = range.getRow();
-        const colNum = range.getColumn();
+      const activeSheet = SpreadsheetApp.getActiveSheet();
+      const activeRange = activeSheet ? activeSheet.getActiveRange() : null;
+      if (activeSheet && activeRange) {
+        const row = activeRange.getRow();
+        const colNum = activeRange.getColumn();
         const notificationCol = colNum + 1;
-        markError(sheet, row, notificationCol, 'Script error');
+        markError(activeSheet, row, notificationCol, 'Script error: ' + error.message);
+      } else {
+        console.error('Could not get active sheet or range for error marking');
       }
     } catch (markError) {
       console.error('Could not mark error in sheet:', markError);
@@ -655,17 +675,54 @@ function onEdit(e) {
   }
 }
 
+// Helper function to format phone numbers
+function formatPhoneNumber(phone) {
+  if (!phone) return '';
+  
+  // Remove all non-digit characters
+  let cleanPhone = phone.toString().replace(/\D/g, '');
+  
+  // If it's already 12 digits and starts with 91, return as is
+  if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+    return cleanPhone;
+  }
+  
+  // If it's 10 digits, add 91 prefix
+  if (cleanPhone.length === 10) {
+    return '91' + cleanPhone;
+  }
+  
+  // If it's 11 digits and starts with 0, remove 0 and add 91
+  if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+    return '91' + cleanPhone.substring(1);
+  }
+  
+  // If it's 11 digits and starts with 1, add 91 prefix
+  if (cleanPhone.length === 11 && cleanPhone.startsWith('1')) {
+    return '91' + cleanPhone;
+  }
+  
+  // Return as is if we can't format it properly
+  return cleanPhone;
+}
+
 // Helper function to mark errors safely
 function markError(sheet, row, notificationCol, errorMsg) {
   try {
+    if (!sheet || !row || !notificationCol) {
+      console.error('Invalid parameters for markError:', { sheet: !!sheet, row, notificationCol });
+      return;
+    }
+    
     const truncatedMsg = `Error: ${errorMsg}`.substring(0, 50);
     sheet.getRange(row, notificationCol).setValue(truncatedMsg);
+    console.log(`Marked error in row ${row}, col ${notificationCol}: ${truncatedMsg}`);
   } catch (markError) {
     console.error('Could not mark error in sheet:', markError);
   }
 }
 
-// Updated sendToWhatsApp function
+// Updated sendToWhatsApp function with improved error handling and retries
 function sendToWhatsApp(customerData, sheet, row, notificationCol) {
   const webhookUrl = 'https://tailoring-whatsapp-bot.onrender.com/webhook/order-ready';
   
@@ -688,44 +745,125 @@ function sendToWhatsApp(customerData, sheet, row, notificationCol) {
     return;
   }
   
+  // Validate phone number format
+  if (customerData.phone.length < 10) {
+    console.error('Invalid phone number:', customerData.phone);
+    markError(sheet, row, notificationCol, 'Invalid phone number');
+    return;
+  }
+  
   const payload = {
     name: customerData.name.toString().trim(),
     phone: customerData.phone.toString().trim(),
     item: customerData.item.toString().trim(),
     orderDate: customerData.orderDate || '',
-    dueDate: customerData.dueDate || '',
-    row: row // To mark as notified later
+    dueDate: customerData.dueDate || ''
   };
   
   console.log('Sending payload:', payload);
   
-  const options = {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true // This will help see the full error response
-  };
+  // Enhanced retry logic with better error handling
+  let attempts = 0;
+  const maxAttempts = 3;
+  let lastError = null;
   
-  try {
-    const response = UrlFetchApp.fetch(webhookUrl, options);
-    const responseText = response.getContentText();
-    const responseCode = response.getResponseCode();
+  while (attempts < maxAttempts) {
+    attempts++;
+    console.log(`Attempt ${attempts} of ${maxAttempts}`);
     
-    console.log('WhatsApp API Response Code:', responseCode);
-    console.log('WhatsApp API Response:', responseText);
+    const options = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true,
+      timeout: 30000 // 30 second timeout
+    };
     
-    if (responseCode === 200) {
-      // Mark as notified on success
-      sheet.getRange(row, notificationCol).setValue('Yes');
-      console.log('Successfully sent and marked as notified');
-    } else {
-      // Mark with error status
-      markError(sheet, row, notificationCol, `HTTP ${responseCode}`);
+    try {
+      const response = UrlFetchApp.fetch(webhookUrl, options);
+      const responseText = response.getContentText();
+      const responseCode = response.getResponseCode();
+      
+      console.log('WhatsApp API Response Code:', responseCode);
+      console.log('WhatsApp API Response:', responseText);
+      
+      if (responseCode === 200) {
+        // Parse response to check if it was successful
+        try {
+          const responseData = JSON.parse(responseText);
+          if (responseData.success) {
+            // Mark as notified on success
+            sheet.getRange(row, notificationCol).setValue('Yes');
+            console.log('Successfully sent and marked as notified');
+            return;
+          } else {
+            console.error('API returned success=false:', responseData);
+            const errorMsg = responseData.error || 'API error';
+            markError(sheet, row, notificationCol, errorMsg);
+            return;
+          }
+        } catch (parseError) {
+          console.error('Error parsing response:', parseError);
+          markError(sheet, row, notificationCol, 'Invalid response');
+          return;
+        }
+      } else if (responseCode === 503) {
+        // WhatsApp not ready - mark with specific message but don't keep retrying
+        console.error('WhatsApp not ready (503)');
+        markError(sheet, row, notificationCol, 'WhatsApp scanning needed');
+        return;
+      } else if (responseCode === 404) {
+        // Endpoint not found - probably deployment issue
+        console.error('Webhook endpoint not found (404)');
+        markError(sheet, row, notificationCol, 'Server error - contact admin');
+        return;
+      } else if (responseCode >= 500 && attempts < maxAttempts) {
+        // Server error - retry with exponential backoff
+        lastError = `HTTP ${responseCode}`;
+        console.log(`Server error ${responseCode}, retrying in ${2000 * attempts}ms...`);
+        Utilities.sleep(2000 * attempts); // Exponential backoff
+        continue;
+      } else if (responseCode >= 400 && responseCode < 500) {
+        // Client error - don't retry
+        let errorMsg = `HTTP ${responseCode}`;
+        try {
+          const errorResponse = JSON.parse(responseText);
+          if (errorResponse.error) {
+            errorMsg = errorResponse.error.substring(0, 30); // Truncate long errors
+          }
+        } catch (e) {
+          // Use default error message
+        }
+        markError(sheet, row, notificationCol, errorMsg);
+        return;
+      } else {
+        // Other errors or max attempts reached
+        markError(sheet, row, notificationCol, lastError || `HTTP ${responseCode}`);
+        return;
+      }
+      
+    } catch (error) {
+      lastError = error.toString();
+      console.error(`Attempt ${attempts} failed:`, error);
+      
+      // Check for specific error types
+      if (error.toString().includes('timeout')) {
+        lastError = 'Request timeout';
+      } else if (error.toString().includes('DNS')) {
+        lastError = 'Connection failed';
+      }
+      
+      if (attempts >= maxAttempts) {
+        console.error('All attempts failed, last error:', lastError);
+        markError(sheet, row, notificationCol, lastError.substring(0, 30));
+        return;
+      }
+      
+      // Wait before retry with exponential backoff
+      const waitTime = Math.min(2000 * attempts, 10000); // Max 10 seconds
+      console.log(`Waiting ${waitTime}ms before retry...`);
+      Utilities.sleep(waitTime);
     }
-    
-  } catch (error) {
-    console.error('Error sending to WhatsApp:', error);
-    markError(sheet, row, notificationCol, 'Network error');
   }
 }
 
@@ -750,7 +888,7 @@ function testWhatsAppWebhook() {
   
   const payload = {
     name: testCustomerData.name,
-    phone: testCustomerData.phone,
+    phone: formatPhoneNumber(testCustomerData.phone), // Use formatted phone
     item: testCustomerData.item,
     orderDate: testCustomerData.orderDate,
     dueDate: testCustomerData.dueDate
@@ -759,15 +897,21 @@ function testWhatsAppWebhook() {
   const options = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    payload: JSON.stringify(payload)
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
   };
   
   try {
     const response = UrlFetchApp.fetch(webhookUrl, options);
     const responseText = response.getContentText();
+    const responseCode = response.getResponseCode();
+    
+    console.log('Test webhook response code:', responseCode);
     console.log('Test webhook response:', responseText);
+    
     return {
-      success: true,
+      success: responseCode === 200,
+      responseCode: responseCode,
       response: responseText
     };
   } catch (error) {
@@ -776,6 +920,257 @@ function testWhatsAppWebhook() {
       success: false,
       error: error.toString()
     };
+  }
+}
+
+/**
+ * Function to fix phone numbers in existing orders
+ * Run this once to fix phone numbers that are missing country code
+ */
+function fixPhoneNumbersInOrders() {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ordersSheet = spreadsheet.getSheetByName('Orders');
+    
+    if (!ordersSheet || ordersSheet.getLastRow() <= 1) {
+      console.log('No data in Orders sheet to fix');
+      return 'No data to fix';
+    }
+    
+    const dataRange = ordersSheet.getDataRange();
+    const values = dataRange.getValues();
+    
+    let fixedCount = 0;
+    
+    // Start from row 2 (skip header)
+    for (let i = 1; i < values.length; i++) {
+      const phone = values[i][2]; // Column C - Contact Info
+      const formattedPhone = formatPhoneNumber(phone);
+      
+      if (phone !== formattedPhone) {
+        ordersSheet.getRange(i + 1, 3).setValue(formattedPhone); // Column C
+        fixedCount++;
+        console.log(`Fixed phone in row ${i + 1}: ${phone} -> ${formattedPhone}`);
+      }
+    }
+    
+    console.log(`Fixed ${fixedCount} phone numbers`);
+    return `Fixed ${fixedCount} phone numbers in Orders sheet`;
+    
+  } catch (error) {
+    console.error('Error fixing phone numbers:', error);
+    return 'Error: ' + error.toString();
+  }
+}
+
+/**
+ * Function to manually send WhatsApp notification for a specific order
+ * This bypasses the onEdit trigger and can be used to manually send notifications
+ */
+function sendWhatsAppForOrder(orderId) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ordersSheet = spreadsheet.getSheetByName('Orders');
+    
+    if (!ordersSheet || ordersSheet.getLastRow() <= 1) {
+      return 'No data in Orders sheet';
+    }
+    
+    const dataRange = ordersSheet.getDataRange();
+    const values = dataRange.getValues();
+    
+    // Find the order
+    for (let i = 1; i < values.length; i++) {
+      if (values[i][0] === orderId) {
+        const rowData = values[i];
+        const row = i + 1; // Actual row number in sheet
+        
+        const customerData = {
+          name: (rowData[1] || '').toString().trim(),
+          phone: formatPhoneNumber((rowData[2] || '').toString().trim()),
+          item: (rowData[5] || '').toString().trim(),
+          orderDate: rowData[6] || '',
+          dueDate: rowData[7] || ''
+        };
+        
+        console.log('Found order for manual send:', customerData);
+        
+        // Validate data
+        if (!customerData.name || !customerData.phone || !customerData.item) {
+          const errorMsg = 'Missing required fields: ' + 
+            (!customerData.name ? 'name ' : '') +
+            (!customerData.phone ? 'phone ' : '') +
+            (!customerData.item ? 'item' : '');
+          console.error(errorMsg);
+          return { success: false, error: errorMsg };
+        }
+        
+        // Find notification column (assuming it's after status column)
+        const statusCol = 9; // Column I - Delivery Status
+        const notificationCol = statusCol + 1; // Column J
+        
+        // Send to WhatsApp
+        sendToWhatsApp(customerData, ordersSheet, row, notificationCol);
+        
+        return {
+          success: true,
+          message: 'WhatsApp notification sent for order: ' + orderId,
+          customerData: customerData
+        };
+      }
+    }
+    
+    return { success: false, error: 'Order not found: ' + orderId };
+    
+  } catch (error) {
+    console.error('Error sending WhatsApp for order:', error);
+    return { success: false, error: 'Error: ' + error.toString() };
+  }
+}
+
+/**
+ * Function to send WhatsApp notifications for all Ready orders that haven't been notified
+ * Run this function to manually send notifications for orders that failed
+ */
+function sendNotificationsForReadyOrders() {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ordersSheet = spreadsheet.getSheetByName('Orders');
+    
+    if (!ordersSheet || ordersSheet.getLastRow() <= 1) {
+      return 'No data in Orders sheet';
+    }
+    
+    const dataRange = ordersSheet.getDataRange();
+    const values = dataRange.getValues();
+    
+    let sentCount = 0;
+    let errorCount = 0;
+    const results = [];
+    
+    // Start from row 2 (skip header)
+    for (let i = 1; i < values.length; i++) {
+      const rowData = values[i];
+      const row = i + 1; // Actual row number in sheet
+      
+      // Check if status is "Ready" and not already notified
+      const status = (rowData[8] || '').toString().trim(); // Column I - Delivery Status
+      const notificationStatus = (rowData[9] || '').toString().trim(); // Column J - Notification Status
+      
+      if (status === 'Ready' && notificationStatus !== 'Yes') {
+        const customerData = {
+          name: (rowData[1] || '').toString().trim(),
+          phone: formatPhoneNumber((rowData[2] || '').toString().trim()),
+          item: (rowData[5] || '').toString().trim(),
+          orderDate: rowData[6] || '',
+          dueDate: rowData[7] || ''
+        };
+        
+        console.log(`Processing Ready order ${rowData[0]} for ${customerData.name}`);
+        
+        // Validate data
+        if (!customerData.name || !customerData.phone || !customerData.item) {
+          const errorMsg = 'Missing required fields';
+          console.error(`Order ${rowData[0]}: ${errorMsg}`);
+          ordersSheet.getRange(row, 10).setValue('Error: ' + errorMsg); // Column J
+          errorCount++;
+          results.push({ orderId: rowData[0], status: 'error', message: errorMsg });
+          continue;
+        }
+        
+        // Send to WhatsApp
+        const notificationCol = 10; // Column J
+        sendToWhatsApp(customerData, ordersSheet, row, notificationCol);
+        sentCount++;
+        results.push({ orderId: rowData[0], status: 'sent', customer: customerData.name });
+        
+        // Small delay to avoid overwhelming the API
+        Utilities.sleep(1000);
+      }
+    }
+    
+    console.log(`Processed ${sentCount + errorCount} orders: ${sentCount} sent, ${errorCount} errors`);
+    
+    return {
+      success: true,
+      message: `Processed ${sentCount + errorCount} orders`,
+      sent: sentCount,
+      errors: errorCount,
+      results: results
+    };
+    
+  } catch (error) {
+    console.error('Error processing ready orders:', error);
+    return { success: false, error: 'Error: ' + error.toString() };
+  }
+}
+
+/**
+ * Function to test a specific order by Order ID
+ * Useful for debugging specific orders
+ */
+function testOrderById(orderId) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ordersSheet = spreadsheet.getSheetByName('Orders');
+    
+    if (!ordersSheet || ordersSheet.getLastRow() <= 1) {
+      return 'No data in Orders sheet';
+    }
+    
+    const dataRange = ordersSheet.getDataRange();
+    const values = dataRange.getValues();
+    
+    // Find the order
+    for (let i = 1; i < values.length; i++) {
+      if (values[i][0] === orderId) {
+        const rowData = values[i];
+        
+        const customerData = {
+          name: (rowData[1] || '').toString().trim(),
+          phone: formatPhoneNumber((rowData[2] || '').toString().trim()),
+          item: (rowData[5] || '').toString().trim(),
+          orderDate: rowData[6] || '',
+          dueDate: rowData[7] || ''
+        };
+        
+        console.log('Found order:', customerData);
+        
+        // Test sending
+        const webhookUrl = 'https://tailoring-whatsapp-bot.onrender.com/webhook/order-ready';
+        const payload = {
+          name: customerData.name,
+          phone: customerData.phone,
+          item: customerData.item,
+          orderDate: customerData.orderDate,
+          dueDate: customerData.dueDate
+        };
+        
+        const options = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          payload: JSON.stringify(payload),
+          muteHttpExceptions: true
+        };
+        
+        const response = UrlFetchApp.fetch(webhookUrl, options);
+        const responseText = response.getContentText();
+        const responseCode = response.getResponseCode();
+        
+        return {
+          orderId: orderId,
+          customerData: customerData,
+          responseCode: responseCode,
+          response: responseText
+        };
+      }
+    }
+    
+    return 'Order not found: ' + orderId;
+    
+  } catch (error) {
+    console.error('Error testing order:', error);
+    return 'Error: ' + error.toString();
   }
 }
 

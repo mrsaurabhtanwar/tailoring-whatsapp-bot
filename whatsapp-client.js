@@ -32,14 +32,13 @@ class WhatsAppClient {
           '--disable-web-security',
           '--disable-features=VizDisplayCompositor',
           '--memory-pressure-off',
-          '--max_old_space_size=512',
+          '--max_old_space_size=256',
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
           '--disable-extensions',
           '--disable-plugins',
           '--disable-images',
-          '--disable-javascript',
           '--disable-default-apps',
           '--disable-sync',
           '--disable-translate',
@@ -47,34 +46,25 @@ class WhatsAppClient {
           '--disable-breakpad',
           '--disable-component-extensions-with-background-pages',
           '--disable-background-networking',
-          '--disable-background-timer-throttling',
           '--disable-client-side-phishing-detection',
           '--disable-component-update',
           '--disable-domain-reliability',
           '--disable-features=TranslateUI',
           '--disable-ipc-flooding-protection',
-          '--disable-renderer-backgrounding',
           '--disable-software-rasterizer',
           '--disable-threaded-animation',
           '--disable-threaded-scrolling',
           '--disable-webgl',
           '--disable-webgl2',
-          '--enable-features=NetworkService,NetworkServiceLogging',
           '--force-color-profile=srgb',
           '--metrics-recording-only',
           '--no-default-browser-check',
           '--no-pings',
-          '--no-zygote',
           '--password-store=basic',
-          '--use-mock-keychain',
-          '--use-gl=swiftshader',
-          '--use-angle=swiftshader',
-          '--disable-web-security',
-          '--allow-running-insecure-content',
-          '--disable-features=VizDisplayCompositor',
-          '--memory-pressure-off',
-          '--max_old_space_size=512'
-        ]
+          '--use-mock-keychain'
+        ],
+        timeout: 60000, // 60 second timeout
+        protocolTimeout: 180000 // 3 minute protocol timeout
       }
     });
 
@@ -120,21 +110,41 @@ class WhatsAppClient {
     this.client.on('disconnected', (reason) => {
       this.ready = false;
       this.stopHealthCheck();
+      this.stopKeepAlive();
       console.log('❌ WhatsApp Client disconnected:', reason);
       
-      // Check if we should restart
-      if (this.shouldRestart()) {
-        const delay = Math.min(5000 * (this.restartCount + 1), 30000); // Exponential backoff, max 30s
+      // Clean up QR code files on disconnect
+      try {
+        if (fs.existsSync('current-qr.png')) {
+          fs.unlinkSync('current-qr.png');
+        }
+        if (fs.existsSync('qr-data-url.txt')) {
+          fs.unlinkSync('qr-data-url.txt');
+        }
+      } catch (error) {
+        console.log('Warning: Could not clean up QR files:', error.message);
+      }
+      
+      // Only attempt restart for certain reasons, not LOGOUT
+      if (reason !== 'LOGOUT' && this.shouldRestart()) {
+        const delay = Math.min(10000 * (this.restartCount + 1), 60000); // Increased delays
         console.log(`🔄 Attempting to reconnect in ${delay/1000} seconds... (attempt ${this.restartCount + 1}/${this.maxRestarts})`);
         
         setTimeout(() => {
           console.log('🔄 Reinitializing WhatsApp client...');
           this.restartCount++;
           this.lastRestart = Date.now();
-          this.client.initialize();
+          this.initialize();
         }, delay);
+      } else if (reason === 'LOGOUT') {
+        console.log('📱 Client was logged out - authentication required. QR code will be generated on next initialization.');
+        // For logout, clean restart without counting as failure
+        setTimeout(() => {
+          console.log('🔄 Restarting after logout...');
+          this.initialize();
+        }, 5000);
       } else {
-        console.log('❌ Max restart attempts reached. Manual intervention required.');
+        console.log('❌ Max restart attempts reached or restart not appropriate for reason:', reason);
       }
     });
 
@@ -239,7 +249,7 @@ class WhatsAppClient {
       console.log(`💾 Memory usage: ${memUsageMB}MB`);
       
       // If memory usage is too high, restart
-      if (memUsageMB > 600) { // Increased threshold to 600MB
+      if (memUsageMB > 400) { // Reduced threshold to 400MB
         console.log('⚠️ High memory usage detected, restarting client...');
         this.restartClient();
         return;
@@ -311,10 +321,69 @@ class WhatsAppClient {
       console.log('Error destroying client:', error.message);
     }
     
-    // Wait a bit before recreating
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+    }
+    
+    // Wait longer before recreating to allow cleanup
     setTimeout(() => {
+      this.client = new Client({
+        authStrategy: new LocalAuth({
+          clientId: 'tailoring-shop-bot',
+          dataPath: './.wwebjs_auth'
+        }),
+        puppeteer: {
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--memory-pressure-off',
+            '--max_old_space_size=256',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-images',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--disable-translate',
+            '--disable-logging',
+            '--disable-breakpad',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-background-networking',
+            '--disable-client-side-phishing-detection',
+            '--disable-component-update',
+            '--disable-domain-reliability',
+            '--disable-features=TranslateUI',
+            '--disable-ipc-flooding-protection',
+            '--disable-software-rasterizer',
+            '--disable-threaded-animation',
+            '--disable-threaded-scrolling',
+            '--disable-webgl',
+            '--disable-webgl2',
+            '--force-color-profile=srgb',
+            '--metrics-recording-only',
+            '--no-default-browser-check',
+            '--no-pings',
+            '--password-store=basic',
+            '--use-mock-keychain'
+          ],
+          timeout: 60000,
+          protocolTimeout: 180000
+        }
+      });
       this.initialize();
-    }, 5000); // Increased from 2 seconds to 5 seconds
+    }, 10000); // Increased from 5 seconds to 10 seconds
   }
 
   // Cleanup method

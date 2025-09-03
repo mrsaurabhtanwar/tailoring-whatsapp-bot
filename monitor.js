@@ -1,9 +1,52 @@
 const axios = require('axios');
+const fs = require('fs');
 
 class BotMonitor {
   constructor(baseUrl = 'http://localhost:3000') {
     this.baseUrl = baseUrl;
     this.monitoringInterval = null;
+  }
+
+  checkMemory() {
+    const memUsage = process.memoryUsage();
+    const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    
+    console.log(`📊 Memory Status:`);
+    console.log(`   Heap Used: ${memUsageMB}MB`);
+    console.log(`   Heap Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
+    console.log(`   External: ${Math.round(memUsage.external / 1024 / 1024)}MB`);
+    console.log(`   RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB`);
+    
+    // Log to file for debugging
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      heapUsed: memUsageMB,
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024),
+      rss: Math.round(memUsage.rss / 1024 / 1024)
+    };
+    
+    try {
+      const logLine = JSON.stringify(logEntry) + '\n';
+      fs.appendFileSync('memory.log', logLine);
+    } catch (error) {
+      console.log('Could not write to memory.log:', error.message);
+    }
+    
+    // Warn if memory is high
+    if (memUsageMB > 300) {
+      console.log('⚠️ HIGH MEMORY WARNING!');
+      
+      // Force garbage collection if available
+      if (global.gc) {
+        console.log('🧹 Running garbage collection...');
+        global.gc();
+        const afterGC = process.memoryUsage();
+        console.log(`📊 After GC: ${Math.round(afterGC.heapUsed / 1024 / 1024)}MB`);
+      }
+    }
+    
+    return memUsageMB;
   }
 
   async checkHealth() {
@@ -16,9 +59,13 @@ class BotMonitor {
       console.log('📱 WhatsApp Ready:', data.whatsappReady);
       console.log('📷 QR Available:', data.qrCodeAvailable);
       console.log('⏰ Timestamp:', data.timestamp);
+      
+      // Check memory
+      const memUsage = this.checkMemory();
+      
       console.log('---');
       
-      return data;
+      return { ...data, memoryUsage: memUsage };
     } catch (error) {
       console.error('❌ Health check failed:', error.message);
       return null;

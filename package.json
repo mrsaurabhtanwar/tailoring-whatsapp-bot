@@ -4,7 +4,10 @@
   "description": "WhatsApp automation for tailoring shop",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node --expose-gc server.js",
+    "dev": "node --expose-gc server.js",
+    "monitor": "node monitor.js monitor",
+    "test-webhook": "node monitor.js test"
   },
   "dependencies": {
     "axios": "^1.6.0",
