@@ -49,6 +49,32 @@ app.get('/qr', (req, res) => {
   }
 });
 
+// Session status endpoint
+app.get('/session-status', (req, res) => {
+  try {
+    const authPath = './.wwebjs_auth';
+    const sessionPath = path.join(authPath, 'session-tailoring-shop-bot');
+    const sessionInfoPath = path.join(authPath, 'session-info.json');
+    
+    let sessionInfo = null;
+    if (fs.existsSync(sessionInfoPath)) {
+      sessionInfo = JSON.parse(fs.readFileSync(sessionInfoPath, 'utf8'));
+    }
+    
+    const status = {
+      authenticated: whatsappClient.isReady(),
+      sessionExists: fs.existsSync(sessionPath),
+      qrCodeRequired: !whatsappClient.isReady() && !fs.existsSync('current-qr.png'),
+      sessionInfo: sessionInfo,
+      lastCheck: new Date().toISOString()
+    };
+    
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to check session status' });
+  }
+});
+
 // Memory cleanup endpoint
 app.post('/cleanup', (req, res) => {
   try {

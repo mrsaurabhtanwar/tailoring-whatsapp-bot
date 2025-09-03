@@ -2,6 +2,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const QRCode = require('qrcode');
 const fs = require('fs');
+const path = require('path');
 
 class WhatsAppClient {
   constructor() {
@@ -13,10 +14,16 @@ class WhatsAppClient {
     this.lastOpeningTime = null;
     this.lastErrorTime = null;
     this.keepAliveInterval = null;
+    this.authDataPath = './.wwebjs_auth';
+    this.sessionPath = path.join(this.authDataPath, 'session-tailoring-shop-bot');
+    
+    // Ensure auth directory exists
+    this.ensureAuthDirectory();
+    
     this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'tailoring-shop-bot',
-        dataPath: './.wwebjs_auth'
+        dataPath: this.authDataPath
       }),
       puppeteer: {
         headless: true,
@@ -71,10 +78,53 @@ class WhatsAppClient {
     this.initialize();
   }
 
+  // Ensure authentication directory exists
+  ensureAuthDirectory() {
+    try {
+      if (!fs.existsSync(this.authDataPath)) {
+        fs.mkdirSync(this.authDataPath, { recursive: true });
+        console.log('📁 Created authentication directory:', this.authDataPath);
+      }
+      
+      // Check if session exists
+      const sessionExists = fs.existsSync(this.sessionPath);
+      console.log('🔐 Session status:', sessionExists ? 'EXISTS - Should auto-login' : 'NOT FOUND - Will need QR scan');
+      
+      // Validate session integrity if it exists
+      if (sessionExists) {
+        this.validateSession();
+      }
+    } catch (error) {
+      console.error('❌ Error checking authentication directory:', error);
+    }
+  }
+
+  // Validate session integrity
+  validateSession() {
+    try {
+      const sessionFiles = fs.readdirSync(this.sessionPath);
+      const hasEssentialFiles = sessionFiles.some(file => 
+        file.includes('Default') || file.includes('session') || file.includes('Local')
+      );
+      
+      if (hasEssentialFiles && sessionFiles.length > 0) {
+        console.log('✅ Session data appears valid -', sessionFiles.length, 'files found');
+        console.log('🔄 Attempting auto-login without QR code...');
+      } else {
+        console.log('⚠️ Session data incomplete - QR scan may be required');
+      }
+    } catch (error) {
+      console.log('⚠️ Could not validate session:', error.message);
+    }
+  }
+
   initialize() {
+    // Check session before initializing
+    this.ensureAuthDirectory();
     this.client.on('qr', async (qr) => {
       console.log('📱 QR CODE RECEIVED - Please scan to authenticate WhatsApp');
       console.log('🔗 Access QR code at: https://your-app.onrender.com/qr');
+      console.log('💡 Once authenticated, session will be saved for future deployments');
       
       // Display QR in terminal
       qrcode.generate(qr, { small: true });
@@ -89,9 +139,23 @@ class WhatsAppClient {
         fs.writeFileSync('qr-data-url.txt', dataUrl);
         console.log('✅ QR data URL saved to qr-data-url.txt');
         console.log('📱 Scan the QR code with your WhatsApp mobile app to authenticate');
+        console.log('🔒 After scanning, your session will be permanently saved!');
       } catch (error) {
         console.error('❌ Error saving QR code:', error);
       }
+    });
+
+    this.client.on('authenticated', () => {
+      console.log('🔐 WhatsApp authenticated successfully!');
+      console.log('💾 Session data saved - no QR scan needed for future restarts');
+    });
+
+    this.client.on('auth_failure', (message) => {
+      console.log('❌ WhatsApp Authentication failed:', message);
+      console.log('🔄 Session may be corrupted - clearing and requiring new QR scan');
+      
+      // Clear potentially corrupted session
+      this.clearSession();
     });
 
     this.client.on('ready', () => {
@@ -99,12 +163,16 @@ class WhatsAppClient {
       this.restartCount = 0; // Reset restart count on successful connection
       console.log('✅ WhatsApp Client is ready and authenticated!');
       console.log('📱 Bot is now ready to send messages');
+      console.log('🔒 Session is now permanently saved - no more QR scans needed!');
       
       // Start health check
       this.startHealthCheck();
       
       // Start keep-alive mechanism
       this.startKeepAlive();
+      
+      // Save session backup info
+      this.saveSessionInfo();
     });
 
     this.client.on('disconnected', (reason) => {
@@ -155,6 +223,36 @@ class WhatsAppClient {
     });
 
     this.client.initialize();
+  }
+
+  // Clear corrupted session data
+  clearSession() {
+    try {
+      if (fs.existsSync(this.sessionPath)) {
+        fs.rmSync(this.sessionPath, { recursive: true, force: true });
+        console.log('🧹 Cleared corrupted session data');
+      }
+    } catch (error) {
+      console.error('❌ Error clearing session:', error);
+    }
+  }
+
+  // Save session information for monitoring
+  saveSessionInfo() {
+    try {
+      const sessionInfo = {
+        authenticated: true,
+        timestamp: new Date().toISOString(),
+        clientId: 'tailoring-shop-bot',
+        version: require('./package.json').version || '1.0.0'
+      };
+      
+      const infoPath = path.join(this.authDataPath, 'session-info.json');
+      fs.writeFileSync(infoPath, JSON.stringify(sessionInfo, null, 2));
+      console.log('📋 Session info saved');
+    } catch (error) {
+      console.error('⚠️ Could not save session info:', error);
+    }
   }
 
   async sendMessage(chatId, message) {
@@ -331,7 +429,7 @@ class WhatsAppClient {
       this.client = new Client({
         authStrategy: new LocalAuth({
           clientId: 'tailoring-shop-bot',
-          dataPath: './.wwebjs_auth'
+          dataPath: this.authDataPath
         }),
         puppeteer: {
           headless: true,
