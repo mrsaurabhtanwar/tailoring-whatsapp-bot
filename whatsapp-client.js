@@ -7,9 +7,12 @@ class WhatsAppClient {
   constructor() {
     this.ready = false;
     this.restartCount = 0;
-    this.maxRestarts = 5;
+    this.maxRestarts = 10; // Increased from 5 to 10
     this.lastRestart = Date.now();
     this.healthCheckInterval = null;
+    this.lastOpeningTime = null;
+    this.lastErrorTime = null;
+    this.keepAliveInterval = null;
     this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'tailoring-shop-bot',
@@ -29,10 +32,48 @@ class WhatsAppClient {
           '--disable-web-security',
           '--disable-features=VizDisplayCompositor',
           '--memory-pressure-off',
-          '--max_old_space_size=256',
+          '--max_old_space_size=512',
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding'
+          '--disable-renderer-backgrounding',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-images',
+          '--disable-javascript',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-translate',
+          '--disable-logging',
+          '--disable-breakpad',
+          '--disable-component-extensions-with-background-pages',
+          '--disable-background-networking',
+          '--disable-background-timer-throttling',
+          '--disable-client-side-phishing-detection',
+          '--disable-component-update',
+          '--disable-domain-reliability',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--disable-renderer-backgrounding',
+          '--disable-software-rasterizer',
+          '--disable-threaded-animation',
+          '--disable-threaded-scrolling',
+          '--disable-webgl',
+          '--disable-webgl2',
+          '--enable-features=NetworkService,NetworkServiceLogging',
+          '--force-color-profile=srgb',
+          '--metrics-recording-only',
+          '--no-default-browser-check',
+          '--no-pings',
+          '--no-zygote',
+          '--password-store=basic',
+          '--use-mock-keychain',
+          '--use-gl=swiftshader',
+          '--use-angle=swiftshader',
+          '--disable-web-security',
+          '--allow-running-insecure-content',
+          '--disable-features=VizDisplayCompositor',
+          '--memory-pressure-off',
+          '--max_old_space_size=512'
         ]
       }
     });
@@ -71,6 +112,9 @@ class WhatsAppClient {
       
       // Start health check
       this.startHealthCheck();
+      
+      // Start keep-alive mechanism
+      this.startKeepAlive();
     });
 
     this.client.on('disconnected', (reason) => {
@@ -146,7 +190,7 @@ class WhatsAppClient {
     
     this.healthCheckInterval = setInterval(() => {
       this.performHealthCheck();
-    }, 30000); // Check every 30 seconds
+    }, 60000); // Increased from 30 seconds to 60 seconds
     
     console.log('🔍 Health check started');
   }
@@ -159,6 +203,33 @@ class WhatsAppClient {
     }
   }
 
+  // Keep-alive mechanism to prevent timeouts
+  startKeepAlive() {
+    this.stopKeepAlive(); // Clear any existing interval
+    
+    this.keepAliveInterval = setInterval(async () => {
+      try {
+        if (this.ready && this.client) {
+          // Send a ping to keep the connection alive
+          await this.client.getState();
+          console.log('💓 Keep-alive ping sent');
+        }
+      } catch (error) {
+        console.log('⚠️ Keep-alive failed:', error.message);
+      }
+    }, 300000); // Every 5 minutes
+    
+    console.log('💓 Keep-alive mechanism started');
+  }
+
+  stopKeepAlive() {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+      console.log('💓 Keep-alive stopped');
+    }
+  }
+
   performHealthCheck() {
     try {
       // Check memory usage
@@ -168,7 +239,7 @@ class WhatsAppClient {
       console.log(`💾 Memory usage: ${memUsageMB}MB`);
       
       // If memory usage is too high, restart
-      if (memUsageMB > 400) { // 400MB threshold
+      if (memUsageMB > 600) { // Increased threshold to 600MB
         console.log('⚠️ High memory usage detected, restarting client...');
         this.restartClient();
         return;
@@ -180,11 +251,30 @@ class WhatsAppClient {
         this.client.getState().then(state => {
           if (state !== 'CONNECTED') {
             console.log('⚠️ Client state is not CONNECTED:', state);
-            this.restartClient();
+            // Only restart if state is OPENING for more than 30 seconds
+            if (state === 'OPENING' && this.lastOpeningTime) {
+              if (Date.now() - this.lastOpeningTime > 30000) {
+                console.log('🔄 Client stuck in OPENING state, restarting...');
+                this.restartClient();
+              }
+            } else if (state === 'OPENING') {
+              this.lastOpeningTime = Date.now();
+            } else {
+              this.lastOpeningTime = null;
+            }
+          } else {
+            this.lastOpeningTime = null;
           }
         }).catch(error => {
           console.log('⚠️ Health check failed:', error.message);
-          this.restartClient();
+          // Only restart if error persists for more than 30 seconds
+          if (!this.lastErrorTime) {
+            this.lastErrorTime = Date.now();
+          } else if (Date.now() - this.lastErrorTime > 30000) {
+            console.log('🔄 Persistent health check errors, restarting...');
+            this.restartClient();
+            this.lastErrorTime = null;
+          }
         });
       }
       
@@ -211,6 +301,7 @@ class WhatsAppClient {
     console.log('🔄 Restarting WhatsApp client...');
     this.ready = false;
     this.stopHealthCheck();
+    this.stopKeepAlive();
     
     try {
       if (this.client) {
@@ -223,13 +314,14 @@ class WhatsAppClient {
     // Wait a bit before recreating
     setTimeout(() => {
       this.initialize();
-    }, 2000);
+    }, 5000); // Increased from 2 seconds to 5 seconds
   }
 
   // Cleanup method
   destroy() {
     console.log('🧹 Cleaning up WhatsApp client...');
     this.stopHealthCheck();
+    this.stopKeepAlive();
     this.ready = false;
     
     try {

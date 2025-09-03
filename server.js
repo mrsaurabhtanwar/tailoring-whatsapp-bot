@@ -130,11 +130,25 @@ app.post('/webhook/order-ready', async (req, res) => {
       shopPhone: ''
     });
     
-    // Ensure WhatsApp is ready
-    if (typeof whatsappClient.isReady === 'function' && !whatsappClient.isReady()) {
+    // Wait for WhatsApp to be ready with retry mechanism
+    let retryCount = 0;
+    const maxRetries = 3;
+    const retryDelay = 2000; // 2 seconds
+    
+    while (retryCount < maxRetries) {
+      if (typeof whatsappClient.isReady === 'function' && whatsappClient.isReady()) {
+        break;
+      }
+      
+      console.log(`⏳ Waiting for WhatsApp client to be ready... (attempt ${retryCount + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      retryCount++;
+    }
+    
+    if (retryCount >= maxRetries) {
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp client not ready. Please scan the QR code to authenticate.',
+        error: 'WhatsApp client not ready after multiple attempts. Please scan the QR code to authenticate.',
       });
     }
 
