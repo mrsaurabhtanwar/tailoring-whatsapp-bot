@@ -1,0 +1,8 @@
+node_modules/
+current-qr.png
+qr-data-url.txt
+*.log
+.env
+.env.local
+.DS_Store
+Thumbs.db

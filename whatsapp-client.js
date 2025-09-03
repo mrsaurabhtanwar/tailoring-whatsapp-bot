@@ -1,5 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
+const fs = require('fs');
 
 class WhatsAppClient {
   constructor() {
@@ -26,9 +28,24 @@ class WhatsAppClient {
   }
 
   initialize() {
-    this.client.on('qr', (qr) => {
+    this.client.on('qr', async (qr) => {
       console.log('QR RECEIVED', qr);
+      
+      // Display QR in terminal
       qrcode.generate(qr, { small: true });
+      
+      // Save QR as image file
+      try {
+        await QRCode.toFile('current-qr.png', qr, { width: 400 });
+        console.log('✅ QR code saved as current-qr.png - Open this file to scan!');
+        
+        // Also save as data URL for easy viewing
+        const dataUrl = await QRCode.toDataURL(qr);
+        fs.writeFileSync('qr-data-url.txt', dataUrl);
+        console.log('✅ QR data URL saved to qr-data-url.txt');
+      } catch (error) {
+        console.error('Error saving QR code:', error);
+      }
     });
 
     this.client.on('ready', () => {
