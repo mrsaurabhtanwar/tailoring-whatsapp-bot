@@ -5,6 +5,7 @@ const fs = require('fs');
 
 class WhatsAppClient {
   constructor() {
+  this.ready = false;
     this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'tailoring-shop-bot'
@@ -49,10 +50,12 @@ class WhatsAppClient {
     });
 
     this.client.on('ready', () => {
+      this.ready = true;
       console.log('WhatsApp Client is ready!');
     });
 
     this.client.on('disconnected', (reason) => {
+      this.ready = false;
       console.log('Client was logged out', reason);
       // Auto-restart after 5 seconds
       setTimeout(() => {
@@ -61,6 +64,7 @@ class WhatsAppClient {
     });
 
     this.client.on('auth_failure', () => {
+      this.ready = false;
       console.log('Authentication failed');
     });
 
@@ -69,6 +73,12 @@ class WhatsAppClient {
 
   async sendMessage(chatId, message) {
     try {
+      if (!this.ready) {
+        throw new Error('WhatsApp client not ready. Scan the QR code to authenticate.');
+      }
+      if (!chatId || typeof chatId !== 'string' || !chatId.includes('@')) {
+        throw new Error('Invalid chatId provided');
+      }
       await this.client.sendMessage(chatId, message);
       return { success: true };
     } catch (error) {
@@ -79,6 +89,23 @@ class WhatsAppClient {
 
   async getClient() {
     return this.client;
+  }
+
+  isReady() {
+    return this.ready === true;
+  }
+
+  async waitUntilReady(timeoutMs = 30000) {
+    if (this.ready) return true;
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const check = () => {
+        if (this.ready) return resolve(true);
+        if (Date.now() - start > timeoutMs) return reject(new Error('Timed out waiting for WhatsApp client to be ready'));
+        setTimeout(check, 500);
+      };
+      check();
+    });
   }
 }
 

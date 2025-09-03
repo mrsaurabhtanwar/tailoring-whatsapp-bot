@@ -14,7 +14,8 @@ const whatsappClient = new WhatsAppClient();
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Tailoring Shop Bot Running',
-    timestamp: new Date().toISOString()
+  timestamp: new Date().toISOString(),
+  whatsappReady: typeof whatsappClient.isReady === 'function' ? whatsappClient.isReady() : undefined
   });
 });
 
@@ -37,8 +38,8 @@ app.post('/webhook/order-ready', async (req, res) => {
     
     const { name, phone, item, orderDate, dueDate } = req.body;
     
-    // Validate required fields
-    if (!name || !phone || !item) {
+  // Validate required fields
+  if (!name || !phone || !item) {
       return res.status(400).json({ 
         success: false, 
         error: 'Missing required fields: name, phone, and item are required' 
@@ -47,6 +48,13 @@ app.post('/webhook/order-ready', async (req, res) => {
     
     // Format phone number (ensure it has country code)
     let formattedPhone = phone.toString().replace(/\D/g, ''); // Remove non-digits
+    // Basic sanity: must be at least 10 digits after cleaning
+    if (formattedPhone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid phone number: must contain at least 10 digits'
+      });
+    }
     if (!formattedPhone.startsWith('91')) {
       formattedPhone = `91${formattedPhone}`;
     }
@@ -56,9 +64,22 @@ app.post('/webhook/order-ready', async (req, res) => {
     const message = generateMessage('orderReady', {
       customerName: name,
       item: item,
-      shopName: 'Sharma Tailors' // Change to your shop name
+      orderId: '',
+      garmentTypes: item,
+      price: '',
+      deliveryDate: dueDate || '',
+      shopName: 'RS Tailors & Fabric', // Change to your shop name
+      shopPhone: ''
     });
     
+    // Ensure WhatsApp is ready
+    if (typeof whatsappClient.isReady === 'function' && !whatsappClient.isReady()) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp client not ready. Please scan the QR code to authenticate.',
+      });
+    }
+
     // Send WhatsApp message
     await whatsappClient.sendMessage(chatId, message);
     
@@ -75,7 +96,8 @@ app.post('/webhook/order-ready', async (req, res) => {
     
   } catch (error) {
     console.error('Error sending message:', error);
-    res.status(500).json({ 
+  const status = String(error && error.message || '').includes('not ready') ? 503 : 500;
+  res.status(status).json({ 
       success: false, 
       error: error.message,
       details: 'Failed to send WhatsApp message'
