@@ -8,7 +8,8 @@ class WhatsAppClient {
   this.ready = false;
     this.client = new Client({
       authStrategy: new LocalAuth({
-        clientId: 'tailoring-shop-bot'
+        clientId: 'tailoring-shop-bot',
+        dataPath: './.wwebjs_auth'
       }),
       puppeteer: {
         headless: true,
@@ -20,7 +21,9 @@ class WhatsAppClient {
           '--no-first-run',
           '--no-zygote',
           '--single-process',
-          '--disable-gpu'
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor'
         ]
       }
     });
@@ -30,7 +33,8 @@ class WhatsAppClient {
 
   initialize() {
     this.client.on('qr', async (qr) => {
-      console.log('QR RECEIVED', qr);
+      console.log('📱 QR CODE RECEIVED - Please scan to authenticate WhatsApp');
+      console.log('🔗 Access QR code at: https://your-app.onrender.com/qr');
       
       // Display QR in terminal
       qrcode.generate(qr, { small: true });
@@ -38,34 +42,39 @@ class WhatsAppClient {
       // Save QR as image file
       try {
         await QRCode.toFile('current-qr.png', qr, { width: 400 });
-        console.log('✅ QR code saved as current-qr.png - Open this file to scan!');
+        console.log('✅ QR code saved as current-qr.png');
         
         // Also save as data URL for easy viewing
         const dataUrl = await QRCode.toDataURL(qr);
         fs.writeFileSync('qr-data-url.txt', dataUrl);
         console.log('✅ QR data URL saved to qr-data-url.txt');
+        console.log('📱 Scan the QR code with your WhatsApp mobile app to authenticate');
       } catch (error) {
-        console.error('Error saving QR code:', error);
+        console.error('❌ Error saving QR code:', error);
       }
     });
 
     this.client.on('ready', () => {
       this.ready = true;
-      console.log('WhatsApp Client is ready!');
+      console.log('✅ WhatsApp Client is ready and authenticated!');
+      console.log('📱 Bot is now ready to send messages');
     });
 
     this.client.on('disconnected', (reason) => {
       this.ready = false;
-      console.log('Client was logged out', reason);
+      console.log('❌ WhatsApp Client disconnected:', reason);
+      console.log('🔄 Attempting to reconnect in 5 seconds...');
       // Auto-restart after 5 seconds
       setTimeout(() => {
+        console.log('🔄 Reinitializing WhatsApp client...');
         this.client.initialize();
       }, 5000);
     });
 
-    this.client.on('auth_failure', () => {
+    this.client.on('auth_failure', (msg) => {
       this.ready = false;
-      console.log('Authentication failed');
+      console.log('❌ WhatsApp Authentication failed:', msg);
+      console.log('📱 Please scan the QR code again to authenticate');
     });
 
     this.client.initialize();

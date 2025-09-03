@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const WhatsAppClient = require('./whatsapp-client');
 const { generateMessage } = require('./templates');
 
@@ -14,9 +16,37 @@ const whatsappClient = new WhatsAppClient();
 app.get('/', (req, res) => {
   res.json({ 
     status: 'Tailoring Shop Bot Running',
-  timestamp: new Date().toISOString(),
-  whatsappReady: typeof whatsappClient.isReady === 'function' ? whatsappClient.isReady() : undefined
+    timestamp: new Date().toISOString(),
+    whatsappReady: typeof whatsappClient.isReady === 'function' ? whatsappClient.isReady() : false,
+    qrCodeAvailable: fs.existsSync('current-qr.png'),
+    endpoints: {
+      'GET /': 'Health check',
+      'GET /scanner': 'QR scanner page for WhatsApp authentication',
+      'GET /qr': 'Get QR code image for WhatsApp authentication',
+      'POST /webhook/order-ready': 'Send WhatsApp notifications'
+    }
   });
+});
+
+// QR scanner page
+app.get('/scanner', (req, res) => {
+  res.sendFile(path.join(__dirname, 'qr-scanner.html'));
+});
+
+// QR code endpoint for authentication
+app.get('/qr', (req, res) => {
+  try {
+    if (fs.existsSync('current-qr.png')) {
+      res.sendFile(path.join(__dirname, 'current-qr.png'));
+    } else {
+      res.status(404).json({ 
+        error: 'QR code not available. Please wait for WhatsApp client to generate one.',
+        whatsappReady: typeof whatsappClient.isReady === 'function' ? whatsappClient.isReady() : false
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to serve QR code' });
+  }
 });
 
 // Handle POST to root (redirect to proper endpoint)
@@ -105,7 +135,21 @@ app.post('/webhook/order-ready', async (req, res) => {
   }
 });
 
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Server error:', error);
+  res.status(500).json({ 
+    success: false, 
+    error: 'Internal server error',
+    message: error.message 
+  });
+});
+
 // Start server
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  console.log(`🚀 Server running on port ${port}`);
+  console.log(`📱 WhatsApp Bot Status: ${whatsappClient.isReady() ? 'Ready' : 'Not Ready'}`);
+  console.log(`🔗 Health check: http://localhost:${port}/`);
+  console.log(`📷 QR Code: http://localhost:${port}/qr`);
+  console.log(`📨 Webhook: http://localhost:${port}/webhook/order-ready`);
 });
