@@ -509,35 +509,251 @@ function testConnections() {
 
 
 function onEdit(e) {
-  const range = e.range;
-  const sheet = e.source.getActiveSheet();
-  
-  // Check if Status column (F) was edited
-  if (range.getColumn() === 6 && range.getValue() === 'Ready') {
-    const row = range.getRow();
-    const notified = sheet.getRange(row, 7).getValue(); // Column G
+  try {
+    // Guard: if triggered manually or without event object, skip
+    if (!e || !e.range || !e.source) {
+      console.log('onEdit invoked without event object, skipping.');
+      return;
+    }
+
+    const range = e.range;
+    const sheet = e.source.getActiveSheet();
+    const sheetName = sheet.getName();
     
-    if (notified !== 'Yes') {
-      const customerData = {
-        name: sheet.getRange(row, 1).getValue(),
-        phone: sheet.getRange(row, 2).getValue(),
-        item: sheet.getRange(row, 3).getValue(),
-        orderDate: sheet.getRange(row, 4).getValue(),
-        dueDate: sheet.getRange(row, 5).getValue()
-      };
+    // Only process certain sheets (avoid processing backup sheets)
+    if (!['Orders', 'Shirts', 'Pants', 'Others'].includes(sheetName)) {
+      console.log('Skipping onEdit for sheet:', sheetName);
+      return;
+    }
+    
+    const editedValue = range.getValue();
+    
+    // Debug: Log which column was edited
+    console.log(`Sheet: ${sheetName}, Column ${range.getColumn()} was edited with value: ${editedValue}`);
+    
+    // Check if Status column was edited to 'Ready'
+    if (editedValue === 'Ready') {
+      const row = range.getRow();
+      const colNum = range.getColumn();
       
-      // Send to your Render webhook
-      sendToWhatsApp(customerData, row);
+      console.log(`Ready status detected in row ${row}, column ${colNum}`);
+      
+      // Check if already notified (assuming notification column is one column after status)
+      const notificationCol = colNum + 1;
+      
+      // Safely get notification status
+      let notified = '';
+      try {
+        notified = sheet.getRange(row, notificationCol).getValue() || '';
+      } catch (err) {
+        console.log('Could not read notification column:', err);
+      }
+      
+      if (notified === 'Yes') {
+        console.log('Already notified, skipping');
+        return;
+      }
+      
+      // Get all data from the row with safety checks
+      const lastCol = Math.max(sheet.getLastColumn(), 15); // Ensure minimum columns
+      let rowData = [];
+      
+      try {
+        rowData = sheet.getRange(row, 1, 1, lastCol).getValues()[0];
+        console.log('Full row data:', rowData);
+        console.log('Row data length:', rowData.length);
+      } catch (err) {
+        console.error('Error reading row data:', err);
+        markError(sheet, row, notificationCol, 'Error reading row data');
+        return;
+      }
+      
+      // Validate row data exists
+      if (!rowData || rowData.length === 0) {
+        console.error('Row data is empty or null');
+        markError(sheet, row, notificationCol, 'Row data empty');
+        return;
+      }
+      
+      // Map data based on sheet structure with safety checks
+      let customerData = {};
+      
+      if (sheetName === 'Orders') {
+        // Orders sheet structure: Order ID, Customer Name, Contact Info, Address, Customer Type, Garment Types, Order Date, Delivery Date, Delivery Status...
+        customerData = {
+          name: (rowData[1] || '').toString().trim(),        // Column B - Customer Name
+          phone: (rowData[2] || '').toString().trim(),       // Column C - Contact Info 
+          item: (rowData[5] || '').toString().trim(),        // Column F - Garment Types
+          orderDate: rowData[6] || '',                       // Column G - Order Date
+          dueDate: rowData[7] || ''                          // Column H - Delivery Date
+        };
+      } else {
+        // Shirts, Pants, Others sheets: Order ID, Customer Name, Address, Order Date, Delivery Date...
+        customerData = {
+          name: (rowData[1] || '').toString().trim(),        // Column B - Customer Name
+          phone: '',                                         // Will be fetched from Orders sheet
+          item: `${sheetName} Order`,                        // Use sheet name as item type
+          orderDate: rowData[3] || '',                       // Column D - Order Date
+          dueDate: rowData[4] || ''                          // Column E - Delivery Date
+        };
+        
+        // For non-Orders sheets, try to get phone number from Orders sheet
+        try {
+          const orderId = (rowData[0] || '').toString().trim(); // Column A - Order ID
+          if (orderId) {
+            const ordersSheet = sheet.getParent().getSheetByName('Orders');
+            if (ordersSheet && ordersSheet.getLastRow() > 1) {
+              const ordersData = ordersSheet.getDataRange().getValues();
+              const orderRow = ordersData.find(row => (row[0] || '').toString().trim() === orderId);
+              if (orderRow && orderRow[2]) {
+                customerData.phone = (orderRow[2] || '').toString().trim(); // Contact Info from Orders sheet
+              }
+            }
+          }
+        } catch (phoneErr) {
+          console.log('Could not fetch phone from Orders sheet:', phoneErr);
+        }
+      }
+      
+      console.log('Mapped customer data:', customerData);
+      
+      // Validate required fields before sending
+      if (!customerData.name || !customerData.phone || !customerData.item) {
+        const missingFields = [];
+        if (!customerData.name) missingFields.push('name');
+        if (!customerData.phone) missingFields.push('phone');
+        if (!customerData.item) missingFields.push('item');
+        
+        const errorMsg = `Missing: ${missingFields.join(', ')}`;
+        console.error('Missing required fields:', errorMsg, customerData);
+        
+        markError(sheet, row, notificationCol, errorMsg);
+        return;
+      }
+      
+      console.log('About to call sendToWhatsApp with valid data');
+      
+      // Send to webhook
+      sendToWhatsApp(customerData, sheet, row, notificationCol);
+    }
+  } catch (error) {
+    console.error('onEdit error:', error);
+    // Try to mark the cell with error if possible
+    try {
+      // Only attempt marking if an active sheet and selection exist
+      const sheet = SpreadsheetApp.getActiveSheet();
+      const range = sheet ? sheet.getActiveRange() : null;
+      if (sheet && range) {
+        const row = range.getRow();
+        const colNum = range.getColumn();
+        const notificationCol = colNum + 1;
+        markError(sheet, row, notificationCol, 'Script error');
+      }
+    } catch (markError) {
+      console.error('Could not mark error in sheet:', markError);
     }
   }
 }
 
-function sendToWhatsApp(customerData, row) {
+// Helper function to mark errors safely
+function markError(sheet, row, notificationCol, errorMsg) {
+  try {
+    const truncatedMsg = `Error: ${errorMsg}`.substring(0, 50);
+    sheet.getRange(row, notificationCol).setValue(truncatedMsg);
+  } catch (markError) {
+    console.error('Could not mark error in sheet:', markError);
+  }
+}
+
+// Updated sendToWhatsApp function
+function sendToWhatsApp(customerData, sheet, row, notificationCol) {
+  const webhookUrl = 'https://tailoring-whatsapp-bot.onrender.com/webhook/order-ready';
+  
+  // Validate all parameters exist
+  if (!customerData) {
+    console.error('customerData is undefined or null');
+    markError(sheet, row, notificationCol, 'No customer data');
+    return;
+  }
+  
+  if (!sheet || !row || !notificationCol) {
+    console.error('Missing parameters:', { sheet: !!sheet, row, notificationCol });
+    return;
+  }
+  
+  // Validate required fields exist
+  if (!customerData.name || !customerData.phone || !customerData.item) {
+    console.error('Missing required customer data fields:', customerData);
+    markError(sheet, row, notificationCol, 'Missing required fields');
+    return;
+  }
+  
+  const payload = {
+    name: customerData.name.toString().trim(),
+    phone: customerData.phone.toString().trim(),
+    item: customerData.item.toString().trim(),
+    orderDate: customerData.orderDate || '',
+    dueDate: customerData.dueDate || '',
+    row: row // To mark as notified later
+  };
+  
+  console.log('Sending payload:', payload);
+  
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true // This will help see the full error response
+  };
+  
+  try {
+    const response = UrlFetchApp.fetch(webhookUrl, options);
+    const responseText = response.getContentText();
+    const responseCode = response.getResponseCode();
+    
+    console.log('WhatsApp API Response Code:', responseCode);
+    console.log('WhatsApp API Response:', responseText);
+    
+    if (responseCode === 200) {
+      // Mark as notified on success
+      sheet.getRange(row, notificationCol).setValue('Yes');
+      console.log('Successfully sent and marked as notified');
+    } else {
+      // Mark with error status
+      markError(sheet, row, notificationCol, `HTTP ${responseCode}`);
+    }
+    
+  } catch (error) {
+    console.error('Error sending to WhatsApp:', error);
+    markError(sheet, row, notificationCol, 'Network error');
+  }
+}
+
+
+
+/**
+ * Test function to manually test the WhatsApp webhook
+ * Run this function manually to test without relying on onEdit trigger
+ */
+function testWhatsAppWebhook() {
+  const testCustomerData = {
+    name: 'Test Customer',
+    phone: '9876543210',
+    item: 'Test Shirt',
+    orderDate: '2025-09-04',
+    dueDate: '2025-09-10'
+  };
+  
+  console.log('Testing webhook with data:', testCustomerData);
+  
   const webhookUrl = 'https://tailoring-whatsapp-bot.onrender.com/webhook/order-ready';
   
   const payload = {
-    ...customerData,
-    row: row // To mark as notified later
+    name: testCustomerData.name,
+    phone: testCustomerData.phone,
+    item: testCustomerData.item,
+    orderDate: testCustomerData.orderDate,
+    dueDate: testCustomerData.dueDate
   };
   
   const options = {
@@ -548,15 +764,20 @@ function sendToWhatsApp(customerData, row) {
   
   try {
     const response = UrlFetchApp.fetch(webhookUrl, options);
-    console.log('WhatsApp API Response:', response.getContentText());
-    // Mark as notified
-    SpreadsheetApp.getActiveSheet().getRange(row, 7).setValue('Yes');
+    const responseText = response.getContentText();
+    console.log('Test webhook response:', responseText);
+    return {
+      success: true,
+      response: responseText
+    };
   } catch (error) {
-    console.log('Error sending to WhatsApp:', error);
+    console.error('Test webhook error:', error);
+    return {
+      success: false,
+      error: error.toString()
+    };
   }
 }
-
-
 
 // ===== DEPLOYMENT INSTRUCTIONS =====
 /*

@@ -1,6 +1,6 @@
 // genqr.js
 const qrcode = require('qrcode');
-const qr = "snnK6jGj3aRHfapxIiGgTmHedfDzCOeSkTwF261ejsxtqaB2iwNfOszT25DOjDFgOOs40ChsklToBh/yVnOetbnl+ku4n4Bz598=,aC3jmLWn69UGap4ZoI+SLutW91j69cmm8s6kuL6JIjM=,/hgIF/LyahgdcyHnZ0bwB+voRrgbpmRAbWqd/bTtiks=,665P/9kbCEpNeROVTTu0xpQASJsY0q/QO4w9zuCTQT0=,1";
+const qr = "2@dkmST6sPbOagANLdmHPaMTTWwO8r9m35HvbaC1AVoDejWW/pDWD9diX1mfV7UK5HZpaFCP6PGm8cVh9OtLRhUybsTgmeRVE/gKY=,7MdepMX77ByhBotMwCQ/u8cNRZw+rPacZ5E6tC6HHlQ=,Mz7yU9OFnkKIqNN5WG9C7J6SoWObisT9u0o33mPnJx4=,ZA5MyvwPeMGJjcPH09VIaNTB4V7pb64fhgwj6NJDAfo=,1";
 
 qrcode.toFile('qr.png', qr, { width: 400 })
   .then(() => console.log('Saved qr.png'))
