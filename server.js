@@ -49,6 +49,34 @@ app.get('/qr', (req, res) => {
   }
 });
 
+// Memory cleanup endpoint
+app.post('/cleanup', (req, res) => {
+  try {
+    const memBefore = process.memoryUsage();
+    
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+    }
+    
+    const memAfter = process.memoryUsage();
+    const memFreed = Math.round((memBefore.heapUsed - memAfter.heapUsed) / 1024 / 1024);
+    
+    res.json({
+      success: true,
+      message: 'Memory cleanup completed',
+      memoryBefore: Math.round(memBefore.heapUsed / 1024 / 1024) + 'MB',
+      memoryAfter: Math.round(memAfter.heapUsed / 1024 / 1024) + 'MB',
+      memoryFreed: memFreed + 'MB'
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: 'Memory cleanup failed: ' + error.message 
+    });
+  }
+});
+
 // Handle POST to root (redirect to proper endpoint)
 app.post('/', (req, res) => {
   res.status(400).json({ 
@@ -145,6 +173,35 @@ app.use((error, req, res, next) => {
   });
 });
 
+// Memory monitoring
+setInterval(() => {
+  const memUsage = process.memoryUsage();
+  const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+  console.log(`💾 Server Memory: ${memUsageMB}MB`);
+  
+  // If memory usage is too high, log warning
+  if (memUsageMB > 450) {
+    console.log('⚠️ High memory usage detected!');
+  }
+}, 60000); // Check every minute
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully...');
+  if (whatsappClient && typeof whatsappClient.destroy === 'function') {
+    whatsappClient.destroy();
+  }
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully...');
+  if (whatsappClient && typeof whatsappClient.destroy === 'function') {
+    whatsappClient.destroy();
+  }
+  process.exit(0);
+});
+
 // Start server
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
@@ -152,4 +209,5 @@ app.listen(port, () => {
   console.log(`🔗 Health check: http://localhost:${port}/`);
   console.log(`📷 QR Code: http://localhost:${port}/qr`);
   console.log(`📨 Webhook: http://localhost:${port}/webhook/order-ready`);
+  console.log(`💾 Initial Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
 });

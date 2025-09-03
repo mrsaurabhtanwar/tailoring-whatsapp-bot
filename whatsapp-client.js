@@ -5,7 +5,11 @@ const fs = require('fs');
 
 class WhatsAppClient {
   constructor() {
-  this.ready = false;
+    this.ready = false;
+    this.restartCount = 0;
+    this.maxRestarts = 5;
+    this.lastRestart = Date.now();
+    this.healthCheckInterval = null;
     this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'tailoring-shop-bot',
@@ -23,7 +27,12 @@ class WhatsAppClient {
           '--single-process',
           '--disable-gpu',
           '--disable-web-security',
-          '--disable-features=VizDisplayCompositor'
+          '--disable-features=VizDisplayCompositor',
+          '--memory-pressure-off',
+          '--max_old_space_size=256',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding'
         ]
       }
     });
@@ -56,19 +65,33 @@ class WhatsAppClient {
 
     this.client.on('ready', () => {
       this.ready = true;
+      this.restartCount = 0; // Reset restart count on successful connection
       console.log('✅ WhatsApp Client is ready and authenticated!');
       console.log('📱 Bot is now ready to send messages');
+      
+      // Start health check
+      this.startHealthCheck();
     });
 
     this.client.on('disconnected', (reason) => {
       this.ready = false;
+      this.stopHealthCheck();
       console.log('❌ WhatsApp Client disconnected:', reason);
-      console.log('🔄 Attempting to reconnect in 5 seconds...');
-      // Auto-restart after 5 seconds
-      setTimeout(() => {
-        console.log('🔄 Reinitializing WhatsApp client...');
-        this.client.initialize();
-      }, 5000);
+      
+      // Check if we should restart
+      if (this.shouldRestart()) {
+        const delay = Math.min(5000 * (this.restartCount + 1), 30000); // Exponential backoff, max 30s
+        console.log(`🔄 Attempting to reconnect in ${delay/1000} seconds... (attempt ${this.restartCount + 1}/${this.maxRestarts})`);
+        
+        setTimeout(() => {
+          console.log('🔄 Reinitializing WhatsApp client...');
+          this.restartCount++;
+          this.lastRestart = Date.now();
+          this.client.initialize();
+        }, delay);
+      } else {
+        console.log('❌ Max restart attempts reached. Manual intervention required.');
+      }
     });
 
     this.client.on('auth_failure', (msg) => {
@@ -115,6 +138,107 @@ class WhatsAppClient {
       };
       check();
     });
+  }
+
+  // Health check methods
+  startHealthCheck() {
+    this.stopHealthCheck(); // Clear any existing interval
+    
+    this.healthCheckInterval = setInterval(() => {
+      this.performHealthCheck();
+    }, 30000); // Check every 30 seconds
+    
+    console.log('🔍 Health check started');
+  }
+
+  stopHealthCheck() {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+      console.log('🔍 Health check stopped');
+    }
+  }
+
+  performHealthCheck() {
+    try {
+      // Check memory usage
+      const memUsage = process.memoryUsage();
+      const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      
+      console.log(`💾 Memory usage: ${memUsageMB}MB`);
+      
+      // If memory usage is too high, restart
+      if (memUsageMB > 400) { // 400MB threshold
+        console.log('⚠️ High memory usage detected, restarting client...');
+        this.restartClient();
+        return;
+      }
+      
+      // Check if client is still responsive
+      if (this.ready && this.client) {
+        // Try to get client info to check if it's still responsive
+        this.client.getState().then(state => {
+          if (state !== 'CONNECTED') {
+            console.log('⚠️ Client state is not CONNECTED:', state);
+            this.restartClient();
+          }
+        }).catch(error => {
+          console.log('⚠️ Health check failed:', error.message);
+          this.restartClient();
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Health check error:', error);
+    }
+  }
+
+  shouldRestart() {
+    // Don't restart if we've exceeded max attempts
+    if (this.restartCount >= this.maxRestarts) {
+      return false;
+    }
+    
+    // Don't restart if we just restarted recently (less than 1 minute ago)
+    if (Date.now() - this.lastRestart < 60000) {
+      return false;
+    }
+    
+    return true;
+  }
+
+  restartClient() {
+    console.log('🔄 Restarting WhatsApp client...');
+    this.ready = false;
+    this.stopHealthCheck();
+    
+    try {
+      if (this.client) {
+        this.client.destroy();
+      }
+    } catch (error) {
+      console.log('Error destroying client:', error.message);
+    }
+    
+    // Wait a bit before recreating
+    setTimeout(() => {
+      this.initialize();
+    }, 2000);
+  }
+
+  // Cleanup method
+  destroy() {
+    console.log('🧹 Cleaning up WhatsApp client...');
+    this.stopHealthCheck();
+    this.ready = false;
+    
+    try {
+      if (this.client) {
+        this.client.destroy();
+      }
+    } catch (error) {
+      console.log('Error during cleanup:', error.message);
+    }
   }
 }
 
