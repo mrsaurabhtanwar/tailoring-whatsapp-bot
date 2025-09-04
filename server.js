@@ -7,10 +7,14 @@ const { generateMessage } = require('./templates');
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(express.json());
+// Limit request body to avoid memory spikes
+app.use(express.json({ limit: '64kb' }));
 
 // Initialize WhatsApp client
 const whatsappClient = new WhatsAppClient();
+
+// Simple single-flight queue to avoid concurrent Chrome work
+let sendChain = Promise.resolve();
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -178,8 +182,19 @@ app.post('/webhook/order-ready', async (req, res) => {
       });
     }
 
-    // Send WhatsApp message
-    await whatsappClient.sendMessage(chatId, message);
+    // If memory is already high, reject early to protect the instance
+    const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    if (heapMB > 450) {
+      return res.status(503).json({
+        success: false,
+        error: 'Server under memory pressure, try again shortly.'
+      });
+    }
+
+    // Send WhatsApp message in a single-flight chain to reduce Puppeteer pressure
+    await (sendChain = sendChain
+      .catch(() => {}) // isolate previous error from breaking the chain
+      .then(() => whatsappClient.sendMessage(chatId, message)));
     
     console.log(`Message sent to ${name} (${phone}) for ${item}`);
     res.json({ 

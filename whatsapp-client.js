@@ -6,7 +6,8 @@ const path = require('path');
 
 class WhatsAppClient {
   constructor() {
-    this.ready = false;
+  this.ready = false;
+  this.initialized = false;
     this.restartCount = 0;
     this.maxRestarts = 10; // Increased from 5 to 10
     this.lastRestart = Date.now();
@@ -20,7 +21,8 @@ class WhatsAppClient {
     // Ensure auth directory exists
     this.ensureAuthDirectory();
     
-    this.client = new Client({
+  // Create the client instance once; event wiring happens in initialize()
+  this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'tailoring-shop-bot',
         dataPath: this.authDataPath
@@ -39,7 +41,7 @@ class WhatsAppClient {
           '--disable-web-security',
           '--disable-features=VizDisplayCompositor',
           '--memory-pressure-off',
-          '--max_old_space_size=256',
+          '--max_old_space_size=256', // cap V8 heap for renderer
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
@@ -75,7 +77,7 @@ class WhatsAppClient {
       }
     });
 
-    this.initialize();
+  this.initialize();
   }
 
   // Ensure authentication directory exists
@@ -119,8 +121,23 @@ class WhatsAppClient {
   }
 
   initialize() {
+    if (this.initialized) {
+      // Avoid attaching duplicate listeners and re-initializing puppeteer
+      console.log('ℹ️ initialize() called but client already initialized - skipping rewire');
+      // If client not ready, we can still call client.initialize() once more guarded by state
+    }
+    // Defensive: cap EventEmitter listeners to avoid leak warnings
+    try { this.client.setMaxListeners(25); } catch {}
+
     // Check session before initializing
     this.ensureAuthDirectory();
+    // Remove any previous listeners to prevent growth on restarts
+    this.client.removeAllListeners('qr');
+    this.client.removeAllListeners('authenticated');
+    this.client.removeAllListeners('auth_failure');
+    this.client.removeAllListeners('ready');
+    this.client.removeAllListeners('disconnected');
+
     this.client.on('qr', async (qr) => {
       console.log('📱 QR CODE RECEIVED - Please scan to authenticate WhatsApp');
       console.log('🔗 Access QR code at: https://your-app.onrender.com/qr');
@@ -131,12 +148,13 @@ class WhatsAppClient {
       
       // Save QR as image file
       try {
-        await QRCode.toFile('current-qr.png', qr, { width: 400 });
+        await QRCode.toFile('current-qr.png', qr, { width: 300, margin: 1 });
         console.log('✅ QR code saved as current-qr.png');
         
         // Also save as data URL for easy viewing
-        const dataUrl = await QRCode.toDataURL(qr);
-        fs.writeFileSync('qr-data-url.txt', dataUrl);
+  // Avoid large data-url file writes every QR event; write minimal content
+  const dataUrl = await QRCode.toDataURL(qr, { width: 200, margin: 1 });
+  fs.writeFileSync('qr-data-url.txt', dataUrl.slice(0, 2048)); // cap size
         console.log('✅ QR data URL saved to qr-data-url.txt');
         console.log('📱 Scan the QR code with your WhatsApp mobile app to authenticate');
         console.log('🔒 After scanning, your session will be permanently saved!');
@@ -145,7 +163,7 @@ class WhatsAppClient {
       }
     });
 
-    this.client.on('authenticated', () => {
+  this.client.on('authenticated', () => {
       console.log('🔐 WhatsApp authenticated successfully!');
       console.log('💾 Session data saved - no QR scan needed for future restarts');
     });
@@ -160,6 +178,7 @@ class WhatsAppClient {
 
     this.client.on('ready', () => {
       this.ready = true;
+      this.initialized = true;
       this.restartCount = 0; // Reset restart count on successful connection
       console.log('✅ WhatsApp Client is ready and authenticated!');
       console.log('📱 Bot is now ready to send messages');
@@ -175,7 +194,7 @@ class WhatsAppClient {
       this.saveSessionInfo();
     });
 
-    this.client.on('disconnected', (reason) => {
+  this.client.on('disconnected', (reason) => {
       this.ready = false;
       this.stopHealthCheck();
       this.stopKeepAlive();
@@ -202,6 +221,64 @@ class WhatsAppClient {
           console.log('🔄 Reinitializing WhatsApp client...');
           this.restartCount++;
           this.lastRestart = Date.now();
+          // Ensure a fresh puppeteer instance and clean listeners
+          try { this.client.removeAllListeners(); } catch {}
+          try { this.client.destroy(); } catch {}
+          this.client = new Client({
+            authStrategy: new LocalAuth({
+              clientId: 'tailoring-shop-bot',
+              dataPath: this.authDataPath
+            }),
+            puppeteer: {
+              headless: true,
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--memory-pressure-off',
+                '--max_old_space_size=256',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--disable-images',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-translate',
+                '--disable-logging',
+                '--disable-breakpad',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-background-networking',
+                '--disable-client-side-phishing-detection',
+                '--disable-component-update',
+                '--disable-domain-reliability',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection',
+                '--disable-software-rasterizer',
+                '--disable-threaded-animation',
+                '--disable-threaded-scrolling',
+                '--disable-webgl',
+                '--disable-webgl2',
+                '--force-color-profile=srgb',
+                '--metrics-recording-only',
+                '--no-default-browser-check',
+                '--no-pings',
+                '--password-store=basic',
+                '--use-mock-keychain'
+              ],
+              timeout: 60000,
+              protocolTimeout: 180000
+            }
+          });
+          this.initialized = false;
           this.initialize();
         }, delay);
       } else if (reason === 'LOGOUT') {
@@ -209,6 +286,8 @@ class WhatsAppClient {
         // For logout, clean restart without counting as failure
         setTimeout(() => {
           console.log('🔄 Restarting after logout...');
+          try { this.client.removeAllListeners(); } catch {}
+          this.initialized = false;
           this.initialize();
         }, 5000);
       } else {
@@ -222,7 +301,13 @@ class WhatsAppClient {
       console.log('📱 Please scan the QR code again to authenticate');
     });
 
-    this.client.initialize();
+    // Initialize only once per wiring
+    try {
+      this.client.initialize();
+      this.initialized = true;
+    } catch (e) {
+      console.log('Initialize error:', e.message);
+    }
   }
 
   // Clear corrupted session data
@@ -413,6 +498,7 @@ class WhatsAppClient {
     
     try {
       if (this.client) {
+        this.client.removeAllListeners();
         this.client.destroy();
       }
     } catch (error) {
@@ -477,10 +563,11 @@ class WhatsAppClient {
             '--use-mock-keychain'
           ],
           timeout: 60000,
-          protocolTimeout: 180000
+      protocolTimeout: 180000
         }
       });
-      this.initialize();
+    this.initialized = false;
+    this.initialize();
     }, 10000); // Increased from 5 seconds to 10 seconds
   }
 
@@ -493,6 +580,7 @@ class WhatsAppClient {
     
     try {
       if (this.client) {
+        this.client.removeAllListeners();
         this.client.destroy();
       }
     } catch (error) {

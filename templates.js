@@ -1,24 +1,15 @@
 function generateMessage(type, data) {
+  const safe = (v, d = '') => (v === undefined || v === null ? d : String(v));
   const templates = {
-    orderReady: `🎉 *Great News, ${data.customerName}!*
+    orderReady: `🎉 *Great News, ${safe(data.customerName, 'Customer')}!*
 
-Your complete order is ready for pickup! ✨
+Your order is ready for pickup.
 
-📋 *Order ID:* ${data.orderId}
-👔 *Items:* ${data.garmentTypes}
-💰 *Total Amount:* ₹${data.price}
+� *Items:* ${safe(data.garmentTypes, safe(data.item, 'order'))}
+� *Ready By:* ${safe(data.deliveryDate, safe(data.dueDate, 'today'))}
 
-📍 *Pickup Details:*
-🏪 ${data.shopName}
-🕒 Shop Hours: 10:00 AM - 8:00 PM
-📞 Call us: ${data.shopPhone}
-
-Please visit us at your convenience to collect your order.
-
-Thank you for choosing us! 🙏
-
-*${data.shopName}*
-_Your Style, Our Craft_`,
+🏪 ${safe(data.shopName, 'Our Shop')}\r\n`.
+      trim(),
 
     orderConfirm: `✅ *Order Confirmed!*
 
@@ -61,6 +52,9 @@ Please visit us during shop hours.
   };
 
   return templates[type] || 'Thank you for your order!';
+  const msg = templates[type] || `Thank you for your order, ${safe(data.customerName, '')}!`.trim();
+  // Ensure message length is sane to avoid large buffers
+  return msg.length > 1000 ? msg.slice(0, 1000) : msg;
 }
 
 module.exports = { generateMessage };
