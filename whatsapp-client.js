@@ -23,7 +23,6 @@ class WhatsAppClient {
     this.ensureAuthDirectory();
     
   // Create the client instance once; event wiring happens in initialize()
-  const executablePath = this.resolveChromePath();
   this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'tailoring-shop-bot',
@@ -31,7 +30,6 @@ class WhatsAppClient {
       }),
       puppeteer: {
         headless: true,
-        executablePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -109,16 +107,29 @@ class WhatsAppClient {
     const fromEnv = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
     if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
 
+    // Common Replit/Nix paths
     const candidates = [
+      '/nix/store/*/bin/chromium',
       '/run/current-system/sw/bin/chromium',
       '/usr/bin/chromium',
       '/usr/bin/chromium-browser',
       '/usr/bin/google-chrome',
       '/usr/bin/google-chrome-stable'
     ];
-    for (const p of candidates) {
-      try { if (fs.existsSync(p)) return p; } catch {}
+    
+    for (const pattern of candidates) {
+      if (pattern.includes('*')) {
+        // Handle nix store glob pattern
+        try {
+          const { execSync } = require('child_process');
+          const result = execSync(`ls ${pattern} 2>/dev/null | head -1`, { encoding: 'utf8' }).trim();
+          if (result && fs.existsSync(result)) return result;
+        } catch {}
+      } else {
+        try { if (fs.existsSync(pattern)) return pattern; } catch {}
+      }
     }
+    
     try {
       const which = spawnSync('which', ['chromium'], { encoding: 'utf8' });
       if (which.status === 0 && which.stdout) {
@@ -126,7 +137,9 @@ class WhatsAppClient {
         if (p && fs.existsSync(p)) return p;
       }
     } catch {}
-    // Fallback to undefined (puppeteer-core heuristics)
+    
+    // Fallback to undefined (puppeteer-core will try to find system Chrome)
+    console.log('⚠️ No Chromium executable found. Using puppeteer-core default detection.');
     return undefined;
   }
 
