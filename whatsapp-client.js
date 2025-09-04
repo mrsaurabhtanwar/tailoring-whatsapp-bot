@@ -26,21 +26,24 @@ class WhatsAppClient {
 	}
 
 	_createClient() {
-		const puppeteerConfig = {
-			headless: 'new',
-			args: [
-				'--no-sandbox',
-				'--disable-setuid-sandbox',
-				'--disable-dev-shm-usage',
-				'--no-first-run',
-				'--no-zygote',
-				'--disable-gpu',
-				'--disable-webgl',
-				'--disable-audio-output',
-				'--disable-features=WebRtcHideLocalIpsWithMdns,MediaRouter,InterestCohort,UseChromeOSDirectVideoDecoder'
-			],
-			// executablePath intentionally omitted to use whatsapp-web.js bundled Chromium
-		};
+			const ws = process.env.BROWSER_WS_URL;
+			const puppeteerConfig = ws
+				? { browserWSEndpoint: ws }
+				: {
+						headless: 'new',
+						args: [
+							'--no-sandbox',
+							'--disable-setuid-sandbox',
+							'--disable-dev-shm-usage',
+							'--no-first-run',
+							'--no-zygote',
+							'--disable-gpu',
+							'--disable-webgl',
+							'--disable-audio-output',
+							'--disable-features=WebRtcHideLocalIpsWithMdns,MediaRouter,InterestCohort,UseChromeOSDirectVideoDecoder'
+						],
+						// executablePath intentionally omitted to use whatsapp-web.js bundled Chromium
+					};
 
 		this.client = new Client({
 			authStrategy: new LocalAuth({ clientId: 'tailoring-shop-bot' }),
@@ -111,7 +114,13 @@ class WhatsAppClient {
 		try {
 			await this.client.initialize();
 		} catch (err) {
-			console.error('Failed to initialize WhatsApp client:', err.message);
+				console.error('Failed to initialize WhatsApp client:', err.message);
+				// If Chromium cannot launch due to missing system libs (common on Replit),
+				// auto-retry periodically so that providing BROWSER_WS_URL later can recover.
+				setTimeout(() => {
+					console.log('Retrying WhatsApp client initialization...');
+					this.restartClient().catch(() => {});
+				}, 30000);
 		}
 	}
 
