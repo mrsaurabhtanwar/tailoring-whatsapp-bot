@@ -1,0 +1,7 @@
+run = "npm run start:replit"
+entrypoint = "server.js"
+
+[env]
+PORT = "3000"
+NODE_ENV = "production"
+MAX_OLD_SPACE = "512"

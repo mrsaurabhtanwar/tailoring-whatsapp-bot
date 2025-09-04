@@ -3,6 +3,7 @@ const qrcode = require('qrcode-terminal');
 const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 class WhatsAppClient {
   constructor() {
@@ -22,6 +23,7 @@ class WhatsAppClient {
     this.ensureAuthDirectory();
     
   // Create the client instance once; event wiring happens in initialize()
+  const executablePath = this.resolveChromePath();
   this.client = new Client({
       authStrategy: new LocalAuth({
         clientId: 'tailoring-shop-bot',
@@ -29,6 +31,7 @@ class WhatsAppClient {
       }),
       puppeteer: {
         headless: true,
+        executablePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -99,6 +102,32 @@ class WhatsAppClient {
     } catch (error) {
       console.error('❌ Error checking authentication directory:', error);
     }
+  }
+
+  // Try to resolve a usable Chromium/Chrome path when not provided via env
+  resolveChromePath() {
+    const fromEnv = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+
+    const candidates = [
+      '/run/current-system/sw/bin/chromium',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable'
+    ];
+    for (const p of candidates) {
+      try { if (fs.existsSync(p)) return p; } catch {}
+    }
+    try {
+      const which = spawnSync('which', ['chromium'], { encoding: 'utf8' });
+      if (which.status === 0 && which.stdout) {
+        const p = which.stdout.trim();
+        if (p && fs.existsSync(p)) return p;
+      }
+    } catch {}
+    // Fallback to undefined (puppeteer-core heuristics)
+    return undefined;
   }
 
   // Validate session integrity
@@ -224,13 +253,15 @@ class WhatsAppClient {
           // Ensure a fresh puppeteer instance and clean listeners
           try { this.client.removeAllListeners(); } catch {}
           try { this.client.destroy(); } catch {}
-          this.client = new Client({
+          const executablePath = this.resolveChromePath();
+      this.client = new Client({
             authStrategy: new LocalAuth({
               clientId: 'tailoring-shop-bot',
               dataPath: this.authDataPath
             }),
             puppeteer: {
               headless: true,
+        executablePath,
               args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -512,13 +543,15 @@ class WhatsAppClient {
     
     // Wait longer before recreating to allow cleanup
     setTimeout(() => {
-      this.client = new Client({
+  const executablePath = this.resolveChromePath();
+    this.client = new Client({
         authStrategy: new LocalAuth({
           clientId: 'tailoring-shop-bot',
           dataPath: this.authDataPath
         }),
         puppeteer: {
           headless: true,
+      executablePath,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',

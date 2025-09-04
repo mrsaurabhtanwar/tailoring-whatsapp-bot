@@ -1,18 +1,25 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+
+// Load .env in non-production before other modules use env vars
+if (process.env.NODE_ENV !== 'production') { try { require('dotenv').config(); } catch {} }
+
 const WhatsAppClient = require('./whatsapp-client');
 const { generateMessage } = require('./templates');
 
 const app = express();
-const port = process.env.PORT || 3000;
 
 // Limit request body to avoid memory spikes
 app.use(express.json({ limit: '64kb' }));
 
+const Bottleneck = require('bottleneck');
 // Initialize WhatsApp client
 const whatsappClient = new WhatsAppClient();
-
+const port = parseInt(process.env.PORT || '3000', 10);
+const sendDelay = parseInt(process.env.SEND_DELAY_MS || '600', 10);
+// Bottleneck limiter to throttle sends
+const limiter = new Bottleneck({ minTime: sendDelay, maxConcurrent: 1 });
 // Simple single-flight queue to avoid concurrent Chrome work
 let sendChain = Promise.resolve();
 
@@ -24,12 +31,20 @@ app.get('/', (req, res) => {
     whatsappReady: typeof whatsappClient.isReady === 'function' ? whatsappClient.isReady() : false,
     qrCodeAvailable: fs.existsSync('current-qr.png'),
     endpoints: {
+      'GET /healthz': 'Strict health check',
       'GET /': 'Health check',
       'GET /scanner': 'QR scanner page for WhatsApp authentication',
       'GET /qr': 'Get QR code image for WhatsApp authentication',
       'POST /webhook/order-ready': 'Send WhatsApp notifications'
     }
   });
+});
+
+// Strict healthcheck for uptime
+app.get('/healthz', (req, res) => {
+  const ok = typeof whatsappClient.isReady === 'function' ? whatsappClient.isReady() : false;
+  if (ok) return res.status(200).json({ ok: true });
+  return res.status(503).json({ ok: false });
 });
 
 // QR scanner page
@@ -194,7 +209,7 @@ app.post('/webhook/order-ready', async (req, res) => {
     // Send WhatsApp message in a single-flight chain to reduce Puppeteer pressure
     await (sendChain = sendChain
       .catch(() => {}) // isolate previous error from breaking the chain
-      .then(() => whatsappClient.sendMessage(chatId, message)));
+      .then(() => limiter.schedule(() => whatsappClient.sendMessage(chatId, message))));
     
     console.log(`Message sent to ${name} (${phone}) for ${item}`);
     res.json({ 

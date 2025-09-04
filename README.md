@@ -59,6 +59,14 @@ Send a POST request to `https://your-app.onrender.com/webhook/order-ready`:
 4. Visit `http://localhost:3000/scanner` to authenticate
 5. Test with the webhook endpoint
 
+## Replit Setup
+
+- This repo includes `.replit` and `replit.nix` to install Chromium and run Node with a safe memory cap.
+- Env vars: copy `.env.example` to `.env` if needed. `CHROME_PATH` can be left blank; it will auto-detect Chromium on Replit. If detection fails, set it to `/run/current-system/sw/bin/chromium`.
+- Start: click Run (uses `npm run start:replit`).
+- Authenticate at `/scanner` and confirm `/healthz` returns `{ ok: true }` before sending.
+- Throttling: messages are serialized and rate-limited (default 600ms) to protect memory.
+
 ## Troubleshooting
 
 ### WhatsApp Not Ready
