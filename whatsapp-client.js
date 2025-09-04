@@ -41,8 +41,6 @@ class WhatsAppClient {
           '--disable-gpu',
           '--disable-web-security',
           '--disable-features=VizDisplayCompositor',
-          '--memory-pressure-off',
-          '--max_old_space_size=256', // cap V8 heap for renderer
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
@@ -71,7 +69,9 @@ class WhatsAppClient {
           '--no-default-browser-check',
           '--no-pings',
           '--password-store=basic',
-          '--use-mock-keychain'
+          '--use-mock-keychain',
+          '--disable-dbus',
+          '--disable-audio-output'
         ],
         timeout: 60000, // 60 second timeout
         protocolTimeout: 180000 // 3 minute protocol timeout
@@ -286,8 +286,6 @@ class WhatsAppClient {
                 '--disable-gpu',
                 '--disable-web-security',
                 '--disable-features=VizDisplayCompositor',
-                '--memory-pressure-off',
-                '--max_old_space_size=256',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
                 '--disable-renderer-backgrounding',
@@ -316,7 +314,9 @@ class WhatsAppClient {
                 '--no-default-browser-check',
                 '--no-pings',
                 '--password-store=basic',
-                '--use-mock-keychain'
+                '--use-mock-keychain',
+                '--disable-dbus',
+                '--disable-audio-output'
               ],
               timeout: 60000,
               protocolTimeout: 180000
@@ -576,8 +576,6 @@ class WhatsAppClient {
             '--disable-gpu',
             '--disable-web-security',
             '--disable-features=VizDisplayCompositor',
-            '--memory-pressure-off',
-            '--max_old_space_size=256',
             '--disable-background-timer-throttling',
             '--disable-backgrounding-occluded-windows',
             '--disable-renderer-backgrounding',
@@ -606,7 +604,9 @@ class WhatsAppClient {
             '--no-default-browser-check',
             '--no-pings',
             '--password-store=basic',
-            '--use-mock-keychain'
+            '--use-mock-keychain',
+            '--disable-dbus',
+            '--disable-audio-output'
           ],
           timeout: 60000,
       protocolTimeout: 180000
