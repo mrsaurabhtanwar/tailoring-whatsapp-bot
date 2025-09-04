@@ -143,9 +143,22 @@ function saveToOrdersSheet(spreadsheet, data, orderId) {
   // Create headers if sheet is empty
   if (sheet.getLastRow() === 0) {
     const headers = [
-      'Order ID', 'Customer Name', 'Contact Info', 'Address', 'Customer Type',
-      'Garment Types', 'Order Date', 'Delivery Date', 'Delivery Status',
-      'Price', 'Payment Status', 'Season', 'Festival', 'Notes', 'Created At'
+      // Column indexes for reference (0-based for array access):
+      'Order ID',          // A (0)
+      'Customer Name',     // B (1) 
+      'Contact Info',      // C (2)
+      'Address',          // D (3)
+      'Customer Type',    // E (4)
+      'Garment Types',    // F (5)
+      'Order Date',       // G (6)
+      'Delivery Date',    // H (7)
+      'Delivery Status',  // I (8) - This is what triggers WhatsApp when set to "Ready"
+      'Price',           // J (9) - Revenue data - DO NOT OVERWRITE!
+      'Payment Status',  // K (10) - Payment data - DO NOT OVERWRITE!
+      'Season',          // L (11)
+      'Festival',        // M (12)
+      'Notes',           // N (13)
+      'Created At'       // O (14)
     ];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
@@ -538,21 +551,9 @@ function onEdit(e) {
       
       console.log(`Ready status detected in row ${row}, column ${colNum}`);
       
-      // Check if already notified (assuming notification column is one column after status)
-      const notificationCol = colNum + 1;
-      
-      // Safely get notification status
-      let notified = '';
-      try {
-        notified = sheet.getRange(row, notificationCol).getValue() || '';
-      } catch (err) {
-        console.log('Could not read notification column:', err);
-      }
-      
-      if (notified === 'Yes') {
-        console.log('Already notified, skipping');
-        return;
-      }
+      // Skip notification tracking - we don't need it and it was overwriting payment data
+      // Remove notification column check to prevent overwriting important data
+      console.log('Processing Ready status - notification tracking disabled');
       
       // Get all data from the row with safety checks
       const lastCol = Math.max(sheet.getLastColumn(), 15); // Ensure minimum columns
@@ -564,14 +565,14 @@ function onEdit(e) {
         console.log('Row data length:', rowData.length);
       } catch (err) {
         console.error('Error reading row data:', err);
-        markError(sheet, row, notificationCol, 'Error reading row data');
+        markError(sheet, row, 'Error reading row data');
         return;
       }
       
       // Validate row data exists
       if (!rowData || rowData.length === 0) {
         console.error('Row data is empty or null');
-        markError(sheet, row, notificationCol, 'Row data empty');
+        markError(sheet, row, 'Row data empty');
         return;
       }
       
@@ -633,26 +634,25 @@ function onEdit(e) {
         const errorMsg = `Missing: ${missingFields.join(', ')}`;
         console.error('Missing required fields:', errorMsg, customerData);
         
-        markError(sheet, row, notificationCol, errorMsg);
+        markError(sheet, row, errorMsg);
         return;
       }
       
       console.log('About to call sendToWhatsApp with valid data');
       
       // Validate parameters before calling sendToWhatsApp
-      if (!customerData || !sheet || !row || !notificationCol) {
+      if (!customerData || !sheet || !row) {
         console.error('Invalid parameters for sendToWhatsApp:', {
           customerData: !!customerData,
           sheet: !!sheet,
-          row: row,
-          notificationCol: notificationCol
+          row: row
         });
-        markError(sheet, row, notificationCol, 'Invalid parameters');
+        markError(sheet, row, 'Invalid parameters');
         return;
       }
       
-      // Send to webhook
-      sendToWhatsApp(customerData, sheet, row, notificationCol);
+      // Send to webhook - no notification tracking to avoid overwriting data
+      sendToWhatsApp(customerData, sheet, row);
     }
   } catch (error) {
     console.error('onEdit error:', error);
@@ -663,14 +663,12 @@ function onEdit(e) {
       const activeRange = activeSheet ? activeSheet.getActiveRange() : null;
       if (activeSheet && activeRange) {
         const row = activeRange.getRow();
-        const colNum = activeRange.getColumn();
-        const notificationCol = colNum + 1;
-        markError(activeSheet, row, notificationCol, 'Script error: ' + error.message);
+        markError(activeSheet, row, 'Script error: ' + error.message);
       } else {
         console.error('Could not get active sheet or range for error marking');
       }
-    } catch (markError) {
-      console.error('Could not mark error in sheet:', markError);
+    } catch (markErrorException) {
+      console.error('Could not mark error in sheet:', markErrorException);
     }
   }
 }
@@ -706,49 +704,50 @@ function formatPhoneNumber(phone) {
   return cleanPhone;
 }
 
-// Helper function to mark errors safely
-function markError(sheet, row, notificationCol, errorMsg) {
+// Helper function to mark errors safely - now just logs errors instead of writing to sheet
+function markError(sheet, row, errorMsg) {
   try {
-    if (!sheet || !row || !notificationCol) {
-      console.error('Invalid parameters for markError:', { sheet: !!sheet, row, notificationCol });
-      return;
-    }
+    console.error(`Error in sheet ${sheet ? sheet.getName() : 'unknown'}, row ${row}: ${errorMsg}`);
     
-    const truncatedMsg = `Error: ${errorMsg}`.substring(0, 50);
-    sheet.getRange(row, notificationCol).setValue(truncatedMsg);
-    console.log(`Marked error in row ${row}, col ${notificationCol}: ${truncatedMsg}`);
+    // Optionally, you could write to a separate error log column if needed
+    // For now, just logging to avoid overwriting important data
+    
+    // If you want to track errors in a specific column later, uncomment and adjust:
+    // const errorCol = 15; // Choose a column that won't interfere with data
+    // sheet.getRange(row, errorCol).setValue(`Error: ${errorMsg}`.substring(0, 50));
+    
   } catch (markError) {
-    console.error('Could not mark error in sheet:', markError);
+    console.error('Could not mark error:', markError);
   }
 }
 
-// Updated sendToWhatsApp function with improved error handling and retries
-function sendToWhatsApp(customerData, sheet, row, notificationCol) {
+// Updated sendToWhatsApp function without notification tracking to prevent data overwrite
+function sendToWhatsApp(customerData, sheet, row) {
   const webhookUrl = 'https://tailoring-whatsapp-bot.onrender.com/webhook/order-ready';
   
   // Validate all parameters exist
   if (!customerData) {
     console.error('customerData is undefined or null');
-    markError(sheet, row, notificationCol, 'No customer data');
+    markError(sheet, row, 'No customer data');
     return;
   }
   
-  if (!sheet || !row || !notificationCol) {
-    console.error('Missing parameters:', { sheet: !!sheet, row, notificationCol });
+  if (!sheet || !row) {
+    console.error('Missing parameters:', { sheet: !!sheet, row });
     return;
   }
   
   // Validate required fields exist
   if (!customerData.name || !customerData.phone || !customerData.item) {
     console.error('Missing required customer data fields:', customerData);
-    markError(sheet, row, notificationCol, 'Missing required fields');
+    markError(sheet, row, 'Missing required fields');
     return;
   }
   
   // Validate phone number format
   if (customerData.phone.length < 10) {
     console.error('Invalid phone number:', customerData.phone);
-    markError(sheet, row, notificationCol, 'Invalid phone number');
+    markError(sheet, row, 'Invalid phone number');
     return;
   }
   
@@ -792,30 +791,30 @@ function sendToWhatsApp(customerData, sheet, row, notificationCol) {
         try {
           const responseData = JSON.parse(responseText);
           if (responseData.success) {
-            // Mark as notified on success
-            sheet.getRange(row, notificationCol).setValue('Yes');
-            console.log('Successfully sent and marked as notified');
+            // Success - just log it, don't write to sheet to avoid overwriting data
+            console.log('✅ Successfully sent WhatsApp message to', customerData.name);
+            console.log('📱 Message sent for:', customerData.item);
             return;
           } else {
             console.error('API returned success=false:', responseData);
             const errorMsg = responseData.error || 'API error';
-            markError(sheet, row, notificationCol, errorMsg);
+            markError(sheet, row, errorMsg);
             return;
           }
         } catch (parseError) {
           console.error('Error parsing response:', parseError);
-          markError(sheet, row, notificationCol, 'Invalid response');
+          markError(sheet, row, 'Invalid response');
           return;
         }
       } else if (responseCode === 503) {
         // WhatsApp not ready - mark with specific message but don't keep retrying
         console.error('WhatsApp not ready (503)');
-        markError(sheet, row, notificationCol, 'WhatsApp scanning needed');
+        markError(sheet, row, 'WhatsApp scanning needed');
         return;
       } else if (responseCode === 404) {
         // Endpoint not found - probably deployment issue
         console.error('Webhook endpoint not found (404)');
-        markError(sheet, row, notificationCol, 'Server error - contact admin');
+        markError(sheet, row, 'Server error - contact admin');
         return;
       } else if (responseCode >= 500 && attempts < maxAttempts) {
         // Server error - retry with exponential backoff
@@ -834,11 +833,11 @@ function sendToWhatsApp(customerData, sheet, row, notificationCol) {
         } catch (e) {
           // Use default error message
         }
-        markError(sheet, row, notificationCol, errorMsg);
+        markError(sheet, row, errorMsg);
         return;
       } else {
         // Other errors or max attempts reached
-        markError(sheet, row, notificationCol, lastError || `HTTP ${responseCode}`);
+        markError(sheet, row, lastError || `HTTP ${responseCode}`);
         return;
       }
       
@@ -855,7 +854,7 @@ function sendToWhatsApp(customerData, sheet, row, notificationCol) {
       
       if (attempts >= maxAttempts) {
         console.error('All attempts failed, last error:', lastError);
-        markError(sheet, row, notificationCol, lastError.substring(0, 30));
+        markError(sheet, row, lastError.substring(0, 30));
         return;
       }
       
@@ -1005,12 +1004,8 @@ function sendWhatsAppForOrder(orderId) {
           return { success: false, error: errorMsg };
         }
         
-        // Find notification column (assuming it's after status column)
-        const statusCol = 9; // Column I - Delivery Status
-        const notificationCol = statusCol + 1; // Column J
-        
-        // Send to WhatsApp
-        sendToWhatsApp(customerData, ordersSheet, row, notificationCol);
+        // Send to WhatsApp (no notification column tracking)
+        sendToWhatsApp(customerData, ordersSheet, row);
         
         return {
           success: true,
@@ -1053,11 +1048,10 @@ function sendNotificationsForReadyOrders() {
       const rowData = values[i];
       const row = i + 1; // Actual row number in sheet
       
-      // Check if status is "Ready" and not already notified
+      // Check if status is "Ready" - removed notification tracking to avoid overwriting payment data
       const status = (rowData[8] || '').toString().trim(); // Column I - Delivery Status
-      const notificationStatus = (rowData[9] || '').toString().trim(); // Column J - Notification Status
       
-      if (status === 'Ready' && notificationStatus !== 'Yes') {
+      if (status === 'Ready') {
         const customerData = {
           name: (rowData[1] || '').toString().trim(),
           phone: formatPhoneNumber((rowData[2] || '').toString().trim()),
@@ -1072,15 +1066,13 @@ function sendNotificationsForReadyOrders() {
         if (!customerData.name || !customerData.phone || !customerData.item) {
           const errorMsg = 'Missing required fields';
           console.error(`Order ${rowData[0]}: ${errorMsg}`);
-          ordersSheet.getRange(row, 10).setValue('Error: ' + errorMsg); // Column J
           errorCount++;
           results.push({ orderId: rowData[0], status: 'error', message: errorMsg });
           continue;
         }
         
-        // Send to WhatsApp
-        const notificationCol = 10; // Column J
-        sendToWhatsApp(customerData, ordersSheet, row, notificationCol);
+        // Send to WhatsApp (no notification column tracking)
+        sendToWhatsApp(customerData, ordersSheet, row);
         sentCount++;
         results.push({ orderId: rowData[0], status: 'sent', customer: customerData.name });
         
@@ -1171,6 +1163,72 @@ function testOrderById(orderId) {
   } catch (error) {
     console.error('Error testing order:', error);
     return 'Error: ' + error.toString();
+  }
+}
+
+/**
+ * Function to test revenue calculation and verify column mapping
+ * Run this to check if dashboard revenue calculation is working correctly
+ */
+function testRevenueCalculation() {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ordersSheet = spreadsheet.getSheetByName('Orders');
+    
+    if (!ordersSheet || ordersSheet.getLastRow() <= 1) {
+      return 'No data in Orders sheet to test';
+    }
+    
+    const dataRange = ordersSheet.getDataRange();
+    const values = dataRange.getValues();
+    const headers = values[0];
+    
+    console.log('Headers:', headers);
+    console.log('Price column should be at index 9 (Column J)');
+    console.log('Actual price column header:', headers[9]);
+    
+    let totalRevenue = 0;
+    let orderCount = 0;
+    const revenueDetails = [];
+    
+    // Start from row 2 (skip header)
+    for (let i = 1; i < values.length; i++) {
+      const rowData = values[i];
+      const orderId = rowData[0];
+      const customerName = rowData[1];
+      const price = parseFloat(rowData[9]) || 0; // Column J (index 9)
+      const paymentStatus = rowData[10]; // Column K (index 10)
+      
+      totalRevenue += price;
+      orderCount++;
+      
+      revenueDetails.push({
+        orderId: orderId,
+        customer: customerName,
+        price: price,
+        paymentStatus: paymentStatus
+      });
+    }
+    
+    return {
+      success: true,
+      summary: {
+        totalOrders: orderCount,
+        totalRevenue: totalRevenue,
+        averageOrderValue: orderCount > 0 ? totalRevenue / orderCount : 0
+      },
+      columnMapping: {
+        priceColumnHeader: headers[9],
+        paymentStatusColumnHeader: headers[10],
+        priceColumnIndex: 9,
+        paymentStatusColumnIndex: 10
+      },
+      recentOrders: revenueDetails.slice(-5) // Last 5 orders for verification
+    };
+    
+  } catch (error) {
+    console.error('Error testing revenue calculation:', error);
+    return { success: false, error: error.toString() };
   }
 }
 
