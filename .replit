@@ -5,5 +5,9 @@ entrypoint = "server.js"
 PORT = "3000"
 NODE_ENV = "production"
 
-[nix]
-channel = "stable-22_11"
+[packager]
+language = "nodejs"
+
+[packager.features]
+packageSearch = true
+guessImports = true
