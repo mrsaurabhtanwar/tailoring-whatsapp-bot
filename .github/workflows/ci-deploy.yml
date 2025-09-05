@@ -117,11 +117,10 @@ jobs:
         run: |
           echo "📦 Creating deployment ZIP..."
           
-          # Create deployment zip excluding development files and node_modules
+          # Create deployment zip excluding development files
           zip -r whatsapp-bot.zip . \
             -x ".git/*" \
             -x ".github/*" \
-            -x "node_modules/*" \
             -x "*.log" \
             -x ".env*" \
             -x "package.json.backup" \
@@ -135,9 +134,7 @@ jobs:
             -x "test-*.js" \
             -x "test*/**" \
             -x "*.zip" \
-            -x "*.md" \
-            -x "*.ps1" \
-            -x "*.sh"
+            -x "*.md"
           
           # Check zip size
           ZIP_SIZE=$(du -h whatsapp-bot.zip | cut -f1)

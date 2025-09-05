@@ -49,49 +49,12 @@ app.get("/", (req, res) => {
 
 // Strict healthcheck for uptime
 app.get("/healthz", (req, res) => {
-  try {
-    // Check WhatsApp client
-    const whatsappReady = typeof whatsappClient.isReady === "function" 
-      ? whatsappClient.isReady() 
+  const ok =
+    typeof whatsappClient.isReady === "function"
+      ? whatsappClient.isReady()
       : false;
-    
-    // Check memory usage
-    const memUsage = process.memoryUsage();
-    const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-    const memHealthy = memUsageMB < 1000; // Less than 1GB
-    
-    // Check if app is responsive
-    const appHealthy = true; // App is running if this endpoint responds
-    
-    const overallHealthy = whatsappReady && memHealthy && appHealthy;
-    
-    if (overallHealthy) {
-      return res.status(200).json({ 
-        ok: true, 
-        whatsappReady,
-        memoryMB: memUsageMB,
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      return res.status(503).json({ 
-        ok: false, 
-        whatsappReady,
-        memoryMB: memUsageMB,
-        issues: [
-          !whatsappReady && "WhatsApp not ready",
-          !memHealthy && "High memory usage",
-          !appHealthy && "App not responsive"
-        ].filter(Boolean),
-        timestamp: new Date().toISOString()
-      });
-    }
-  } catch (error) {
-    return res.status(503).json({ 
-      ok: false, 
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
+  if (ok) return res.status(200).json({ ok: true });
+  return res.status(503).json({ ok: false });
 });
 
 // Alternative health endpoint for compatibility

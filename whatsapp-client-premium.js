@@ -123,7 +123,6 @@ class PremiumWhatsAppClient {
             }),
             puppeteer: {
                 headless: 'new',
-                executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome-stable',
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -149,17 +148,7 @@ class PremiumWhatsAppClient {
                     '--disable-features=VizDisplayCompositor',
                     '--user-data-dir=' + this._sessionDir,
                     '--profile-directory=Default',
-                    '--remote-debugging-port=0',
-                    '--disable-background-networking',
-                    '--disable-default-apps',
-                    '--disable-sync',
-                    '--disable-translate',
-                    '--hide-scrollbars',
-                    '--metrics-recording-only',
-                    '--mute-audio',
-                    '--no-first-run',
-                    '--safebrowsing-disable-auto-update',
-                    '--disable-ipc-flooding-protection'
+                    '--remote-debugging-port=0'
                 ],
                 timeout: 0,
                 protocolTimeout: 0,
