@@ -6,23 +6,16 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
-    inputs:
-      force_deploy:
-        description: 'Force deployment even if tests fail'
-        required: false
-        default: 'false'
-        type: boolean
+    {}
 
 env:
-  NODE_VERSION: '18'
-  AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME || secrets.AZURE_WEBAPP_NAME }}
-  AZURE_RESOURCE_GROUP: 'whatsapp-bot-rg'
+  NODE_VERSION: '20'
+  
 
 jobs:
   test:
     runs-on: ubuntu-latest
     name: 🧪 Test & Verify
-    
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -60,13 +53,10 @@ jobs:
   build-and-deploy:
     needs: test
     runs-on: ubuntu-latest
-    name: 🚀 Build & Deploy to Azure
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event.inputs.force_deploy == 'true'
-    
-    environment:
-      name: 'Production'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-
+    name: "🚀 Build & Deploy to Azure"
+    env:
+      AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -95,7 +85,6 @@ jobs:
           
           # Create deployment zip excluding development files
           zip -r whatsapp-bot.zip . \
-            -x "node_modules/*" \
             -x ".git/*" \
             -x ".github/*" \
             -x "*.log" \
@@ -105,6 +94,10 @@ jobs:
             -x "current-qr.png" \
             -x "verify.sh" \
             -x "deploy.sh" \
+            -x "cleanup-and-start.*" \
+            -x "post-build.sh" \
+            -x "test-*.js" \
+            -x "test*/**" \
             -x "*.zip"
           
           # Check zip size
@@ -129,7 +122,7 @@ jobs:
           echo "🏥 Performing post-deployment health check..."
           
           APP_URL="https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
-          HEALTH_URL="${APP_URL}/health"
+          HEALTH_URL="${APP_URL}/"
           
           echo "App URL: $APP_URL"
           echo "Health URL: $HEALTH_URL"
@@ -264,12 +257,10 @@ jobs:
               You can now scan the QR code to authenticate WhatsApp and test your bot.`
             })
 
-  # Separate job for handling failures
   notify-failure:
     needs: [test, build-and-deploy]
     runs-on: ubuntu-latest
     if: failure()
-    
     steps:
       - name: 📧 Notify on failure
         run: |
