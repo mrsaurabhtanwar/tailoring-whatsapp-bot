@@ -57,6 +57,16 @@ app.get("/healthz", (req, res) => {
   return res.status(503).json({ ok: false });
 });
 
+// Alternative health endpoint for compatibility
+app.get("/health", (req, res) => {
+  const ok =
+    typeof whatsappClient.isReady === "function"
+      ? whatsappClient.isReady()
+      : false;
+  if (ok) return res.status(200).json({ ok: true });
+  return res.status(503).json({ ok: false });
+});
+
 // QR scanner page
 app.get("/scanner", (req, res) => {
   res.sendFile(path.join(__dirname, "qr-scanner.html"));
