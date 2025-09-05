@@ -16,39 +16,46 @@ class AzureWhatsAppClient {
         this._sessionDir = path.join(__dirname, '.wwebjs_auth');
         this._retryCount = 0;
         this._maxRetries = 5;
+        this._isAzure = process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_RESOURCE_GROUP;
 
         // Ensure session directory exists
         try { fs.mkdirSync(this._sessionDir, { recursive: true }); } catch {}
 
+        console.log(`🌐 Environment: ${this._isAzure ? 'Azure' : 'Local'} | Platform: ${process.platform}`);
+        
         this._createClient();
         this._wireEvents();
         this._initialize();
     }
 
     _createClient() {
-        const isAzure = process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_RESOURCE_GROUP;
         const isWindows = process.platform === 'win32';
         
-        console.log(`🌐 Environment: ${isAzure ? 'Azure' : 'Local'} | Platform: ${process.platform}`);
+        console.log(`🌐 Environment: ${this._isAzure ? 'Azure' : 'Local'} | Platform: ${process.platform}`);
 
-        // Strategy 1: Use external browser if provided
+        // Strategy 1: Use external browser if provided (RECOMMENDED for Azure F1)
         if (process.env.BROWSER_WS_URL) {
             console.log('🔗 Using external Chrome service:', process.env.BROWSER_WS_URL);
             this.client = new Client({
                 authStrategy: new LocalAuth({ clientId: 'tailoring-shop-bot' }),
                 puppeteer: {
-                    browserWSEndpoint: process.env.BROWSER_WS_URL
+                    browserWSEndpoint: process.env.BROWSER_WS_URL,
+                    timeout: 0,
+                    protocolTimeout: 0
                 },
-                qrMaxRetries: 10
+                qrMaxRetries: 10,
+                authTimeoutMs: 300000,
+                restartOnAuthFail: true
             });
             return;
         }
 
-        // Strategy 2: Try local Chrome with minimal config
+        // Strategy 2: Try local Chrome with Azure-optimized config
         let puppeteerConfig;
         
-        if (isAzure) {
-            // Azure-specific configuration
+        if (this._isAzure) {
+            console.log('🔧 Using Azure-optimized Puppeteer configuration');
+            // Azure-specific configuration with minimal memory usage
             puppeteerConfig = {
                 headless: 'new',
                 args: [
@@ -60,7 +67,20 @@ class AzureWhatsAppClient {
                     '--no-zygote',
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding'
+                    '--disable-renderer-backgrounding',
+                    '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-extensions',
+                    '--disable-default-apps',
+                    '--disable-plugins',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--hide-scrollbars',
+                    '--mute-audio',
+                    '--no-default-browser-check',
+                    '--no-first-run',
+                    '--memory-pressure-off',
+                    '--max_old_space_size=256'
                 ],
                 timeout: 0,
                 protocolTimeout: 0
@@ -79,21 +99,26 @@ class AzureWhatsAppClient {
             puppeteerConfig = {
                 headless: 'new',
                 args: ['--no-sandbox', '--disable-setuid-sandbox'],
-                executablePath: executablePath
+                executablePath: executablePath,
+                timeout: 60000
             };
         } else {
             // Linux configuration
             puppeteerConfig = {
                 headless: 'new',
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
+                args: ['--no-sandbox', '--disable-setuid-sandbox'],
+                timeout: 60000
             };
         }
 
         this.client = new Client({
             authStrategy: new LocalAuth({ clientId: 'tailoring-shop-bot' }),
             puppeteer: puppeteerConfig,
-            qrMaxRetries: isAzure ? 10 : 3,
-            authTimeoutMs: isAzure ? 300000 : 60000
+            qrMaxRetries: this._isAzure ? 10 : 3,
+            authTimeoutMs: this._isAzure ? 300000 : 60000,
+            restartOnAuthFail: true,
+            takeoverOnConflict: true,
+            takeoverTimeoutMs: 0
         });
     }
 
@@ -158,7 +183,10 @@ class AzureWhatsAppClient {
     _handleFailure() {
         if (this._retryCount >= this._maxRetries) {
             console.error('❌ Max retries reached. Please check Azure configuration.');
-            console.log('💡 Try adding BROWSER_WS_URL environment variable with a remote Chrome service.');
+            console.log('💡 Solutions:');
+            console.log('   1. Add BROWSER_WS_URL environment variable with a remote Chrome service');
+            console.log('   2. Scale up from F1 to B1 tier temporarily');
+            console.log('   3. Use local development for initial WhatsApp setup');
             return;
         }
 
