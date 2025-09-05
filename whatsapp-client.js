@@ -26,11 +26,14 @@ class WhatsAppClient {
         }
 
         _createClient() {
-                // Detect Chrome path for Windows
+                // Azure-optimized Chrome configuration
                 const isWindows = process.platform === 'win32';
+                const isAzure = process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_RESOURCE_GROUP;
+                
                 let executablePath;
 
-                if (isWindows) {
+                if (isWindows && !isAzure) {
+                    // Local Windows development
                     const chromePaths = [
                         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
                         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
@@ -46,28 +49,63 @@ class WhatsAppClient {
                 }
 
                 const ws = process.env.BROWSER_WS_URL;
-                const puppeteerConfig = ws
-                        ? { browserWSEndpoint: ws }
-                        : {
-                                        headless: 'new',
-                                        args: [
-                                                '--no-sandbox',
-                                                '--disable-setuid-sandbox',
-                                                '--disable-dev-shm-usage',
-                                                '--disable-gpu',
-                                                '--no-first-run',
-                                                '--disable-features=VizDisplayCompositor'
-                                        ],
-                                        executablePath: executablePath || process.env.CHROME_PATH,
-                                        timeout: 60000
-                                };
+                
+                let puppeteerConfig;
+                
+                if (ws) {
+                    // Use external browser WebSocket
+                    puppeteerConfig = { browserWSEndpoint: ws };
+                } else if (isAzure) {
+                    // Azure App Service configuration
+                    puppeteerConfig = {
+                        headless: 'new',
+                        args: [
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-gpu',
+                            '--disable-software-rasterizer',
+                            '--single-process',
+                            '--no-zygote',
+                            '--disable-background-timer-throttling',
+                            '--disable-backgrounding-occluded-windows',
+                            '--disable-renderer-backgrounding',
+                            '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                            '--disable-ipc-flooding-protection',
+                            '--disable-extensions',
+                            '--disable-default-apps',
+                            '--disable-plugins',
+                            '--disable-sync',
+                            '--disable-translate',
+                            '--hide-scrollbars',
+                            '--mute-audio',
+                            '--no-default-browser-check',
+                            '--no-first-run'
+                        ],
+                        timeout: 0, // No timeout on Azure
+                        protocolTimeout: 240000
+                    };
+                } else {
+                    // Local development (simplified)
+                    puppeteerConfig = {
+                        headless: 'new',
+                        args: [
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox'
+                        ],
+                        executablePath: executablePath,
+                        timeout: 60000
+                    };
+                }
 
                 this.client = new Client({
                         authStrategy: new LocalAuth({ clientId: 'tailoring-shop-bot' }),
                         puppeteer: puppeteerConfig,
                         takeoverOnConflict: true,
                         takeoverTimeoutMs: 0,
-                        qrMaxRetries: 0, // keep emitting fresh QR codes
+                        qrMaxRetries: isAzure ? 10 : 3,
+                        authTimeoutMs: isAzure ? 300000 : 60000,
+                        restartOnAuthFail: true
                 });
         }
 
@@ -129,15 +167,27 @@ class WhatsAppClient {
 
         async _initialize() {
                 try {
+                        console.log('🚀 Initializing WhatsApp client...');
+                        const isAzure = process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_RESOURCE_GROUP;
+                        
+                        if (isAzure) {
+                                console.log('🌐 Azure environment detected, using optimized settings');
+                        }
+                        
                         await this.client.initialize();
                 } catch (err) {
-                                console.error('Failed to initialize WhatsApp client:', err.message);
-                                // If Chromium cannot launch due to missing system libs (common on Replit),
-                                // auto-retry periodically so that providing BROWSER_WS_URL later can recover.
-                                setTimeout(() => {
-                                        console.log('Retrying WhatsApp client initialization...');
-                                        this.restartClient().catch(() => {});
-                                }, 30000);
+                        console.error('❌ Failed to initialize WhatsApp client:', err.message);
+                        
+                        // Enhanced retry logic for Azure
+                        const retryDelay = process.env.WEBSITE_SITE_NAME ? 60000 : 30000; // Longer delay on Azure
+                        console.log(`🔄 Retrying WhatsApp client initialization in ${retryDelay/1000}s...`);
+                        
+                        setTimeout(() => {
+                                console.log('🔄 Attempting WhatsApp client restart...');
+                                this.restartClient().catch((restartErr) => {
+                                        console.error('❌ Restart failed:', restartErr.message);
+                                });
+                        }, retryDelay);
                 }
         }
 
