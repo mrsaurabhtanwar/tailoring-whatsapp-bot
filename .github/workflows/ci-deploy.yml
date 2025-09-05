@@ -58,8 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     name: "🚀 Build & Deploy to Azure"
     env:
-      AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
-      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME || 'tailoring-whatsapp-bot-esgvfsbtbeh4eefp' }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'DefaultResourceGroup-CIN' }}
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -116,12 +116,12 @@ jobs:
           echo "🔍 Validating required inputs..."
           echo "Detected AZURE_WEBAPP_NAME='${AZURE_WEBAPP_NAME}'"
           echo "Detected AZURE_RESOURCE_GROUP='${AZURE_RESOURCE_GROUP}'"
-          if [ -z "${{ env.AZURE_WEBAPP_NAME }}" ]; then echo "❌ Missing AZURE_WEBAPP_NAME (set a repository variable named AZURE_WEBAPP_NAME or hard-code app-name)."; exit 1; fi
+          if [ -z "${AZURE_WEBAPP_NAME}" ]; then echo "❌ Missing AZURE_WEBAPP_NAME (set a repository variable named AZURE_WEBAPP_NAME or hard-code app-name)."; exit 1; fi
           if [ ! -f whatsapp-bot.zip ]; then echo "❌ Deployment package missing (whatsapp-bot.zip)."; exit 1; fi
           if [ -z "${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}" ]; then echo "❌ Secret AZURE_WEBAPP_PUBLISH_PROFILE not defined. In Azure Portal > App Service > Overview > Get publish profile, copy XML into repo secret."; exit 1; fi
           echo "✅ All required inputs present." 
           # Show app name for clarity
-          echo "App Name: ${{ env.AZURE_WEBAPP_NAME }}"
+          echo "App Name: ${AZURE_WEBAPP_NAME}"
 
       - name: 🚀 Deploy to Azure Web App (Publish Profile)
         id: deploy-to-webapp
