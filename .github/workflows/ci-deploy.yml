@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     name: "🚀 Build & Deploy to Azure"
     env:
-      AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME || 'tailoring-whatsapp-bot-esgvfsbtbeh4eefp' }}
+      AZURE_WEBAPP_NAME: tailoring-whats-bot
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'DefaultResourceGroup-CIN' }}
     steps:
       - name: 📥 Checkout code
