@@ -10,10 +10,10 @@ on:
 
 env:
   NODE_VERSION: '20'
-  
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+        env:
+          # Provide values directly; set repo variable AZURE_WEBAPP_NAME to override
+          AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
 
 jobs:
   test:
