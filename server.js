@@ -9,7 +9,7 @@ if (process.env.NODE_ENV !== "production") {
   } catch {}
 }
 
-const WhatsAppClient = require("./whatsapp-client");
+const WhatsAppClient = require("./whatsapp-client-azure");
 const { generateMessage } = require("./templates.js");
 
 const app = express();
