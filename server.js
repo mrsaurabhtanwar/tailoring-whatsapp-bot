@@ -9,7 +9,7 @@ if (process.env.NODE_ENV !== "production") {
   } catch {}
 }
 
-const AzureWhatsAppClient = require("./whatsapp-client-azure");
+const PremiumWhatsAppClient = require("./whatsapp-client-premium");
 const { generateMessage } = require("./templates.js");
 
 const app = express();
@@ -19,7 +19,7 @@ app.use(express.json({ limit: "64kb" }));
 
 const Bottleneck = require("bottleneck");
 // Initialize WhatsApp client
-const whatsappClient = new AzureWhatsAppClient();
+const whatsappClient = new PremiumWhatsAppClient();
 const port = parseInt(process.env.PORT || "5000", 10);
 const sendDelay = parseInt(process.env.SEND_DELAY_MS || "600", 10);
 // Bottleneck limiter to throttle sends
