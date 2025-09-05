@@ -103,12 +103,38 @@ class AzureWhatsAppClient {
                 timeout: 60000
             };
         } else {
-            // Linux configuration
+            // Linux configuration - Use system Chromium in Replit
+            const { execSync } = require('child_process');
+            let executablePath = null;
+            
+            try {
+                executablePath = execSync('which chromium', { encoding: 'utf8' }).trim();
+                console.log('🔍 Found Chromium at:', executablePath);
+            } catch (e) {
+                console.log('⚠️ System Chromium not found, using Puppeteer default');
+            }
+            
             puppeteerConfig = {
                 headless: 'new',
-                args: ['--no-sandbox', '--disable-setuid-sandbox'],
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-first-run',
+                    '--no-default-browser-check',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-features=TranslateUI',
+                    '--disable-extensions'
+                ],
                 timeout: 60000
             };
+            
+            if (executablePath) {
+                puppeteerConfig.executablePath = executablePath;
+            }
         }
 
         this.client = new Client({

@@ -325,9 +325,9 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
+// Start server - bind to 0.0.0.0 for Replit environment
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Server running on 0.0.0.0:${port}`);
   console.log(
     `📱 WhatsApp Bot Status: ${whatsappClient.isReady() ? "Ready" : "Not Ready"}`,
   );
