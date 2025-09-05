@@ -26,46 +26,41 @@ class WhatsAppClient {
         }
 
         _createClient() {
-                        const ws = process.env.BROWSER_WS_URL;
-                        const puppeteerConfig = ws
-                                ? { browserWSEndpoint: ws }
-                                : {
-                                                headless: 'new',
-                                                args: [
-                                                        '--no-sandbox',
-                                                        '--disable-setuid-sandbox',
-                                                        '--disable-dev-shm-usage',
-                                                        '--no-first-run',
-                                                        '--no-zygote',
-                                                        '--disable-gpu',
-                                                        '--disable-webgl',
-                                                        '--disable-audio-output',
-                                                        '--disable-features=WebRtcHideLocalIpsWithMdns,MediaRouter,InterestCohort,UseChromeOSDirectVideoDecoder',
-                                                        '--disable-software-rasterizer',
-                                                        '--disable-background-timer-throttling',
-                                                        '--disable-backgrounding-occluded-windows',
-                                                        '--disable-renderer-backgrounding',
-                                                        '--disable-features=TranslateUI',
-                                                        '--disable-ipc-flooding-protection',
-                                                        '--disable-extensions',
-                                                        '--disable-default-apps',
-                                                        '--disable-plugins',
-                                                        '--disable-sync',
-                                                        '--disable-translate',
-                                                        '--hide-scrollbars',
-                                                        '--mute-audio',
-                                                        '--no-default-browser-check',
-                                                        '--disable-gl-drawing-for-tests',
-                                                        '--use-gl=swiftshader',
-                                                        '--disable-accelerated-2d-canvas',
-                                                        '--disable-accelerated-jpeg-decoding',
-                                                        '--disable-accelerated-mjpeg-decode',
-                                                        '--disable-accelerated-video-decode',
-                                                        '--disable-accelerated-video-encode',
-                                                        '--disable-gpu-sandbox'
-                                                ],
-                                                executablePath: '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium'
-                                        };
+                // Detect Chrome path for Windows
+                const isWindows = process.platform === 'win32';
+                let executablePath;
+
+                if (isWindows) {
+                    const chromePaths = [
+                        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+                    ];
+                    
+                    executablePath = chromePaths.find(p => {
+                        try {
+                            return require('fs').existsSync(p);
+                        } catch {
+                            return false;
+                        }
+                    });
+                }
+
+                const ws = process.env.BROWSER_WS_URL;
+                const puppeteerConfig = ws
+                        ? { browserWSEndpoint: ws }
+                        : {
+                                        headless: 'new',
+                                        args: [
+                                                '--no-sandbox',
+                                                '--disable-setuid-sandbox',
+                                                '--disable-dev-shm-usage',
+                                                '--disable-gpu',
+                                                '--no-first-run',
+                                                '--disable-features=VizDisplayCompositor'
+                                        ],
+                                        executablePath: executablePath || process.env.CHROME_PATH,
+                                        timeout: 60000
+                                };
 
                 this.client = new Client({
                         authStrategy: new LocalAuth({ clientId: 'tailoring-shop-bot' }),
