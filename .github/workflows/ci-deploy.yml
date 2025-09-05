@@ -136,7 +136,8 @@ jobs:
         run: |
           echo "🏥 Performing post-deployment health check..."
           
-          APP_URL="https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          # Use the actual Azure app URL (from your deployment logs)
+          APP_URL="https://tailoring-whats-bot-hvheavb3bbhfbsdn.centralindia-01.azurewebsites.net"
           HEALTH_URL="${APP_URL}/"
           
           echo "App URL: $APP_URL"
