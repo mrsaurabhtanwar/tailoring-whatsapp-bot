@@ -107,10 +107,12 @@ app.get("/session-status", (req, res) => {
     const status = {
       authenticated: whatsappClient.isReady(),
       sessionExists: fs.existsSync(sessionPath),
-      qrCodeRequired:
-        !whatsappClient.isReady() && !fs.existsSync("current-qr.png"),
+      qrCodeRequired: !whatsappClient.isReady() && !fs.existsSync("current-qr.png"),
       sessionInfo: sessionInfo,
       lastCheck: new Date().toISOString(),
+      environment: process.env.WEBSITE_SITE_NAME ? "Azure" : "Local",
+      sessionPath: authPath,
+      sessionPathExists: fs.existsSync(authPath)
     };
 
     res.json(status);
