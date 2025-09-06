@@ -7,7 +7,6 @@ const qrcode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const ExternalSessionStorage = require('./session-storage');
-const ChromiumSessionManager = require('./chromium-session-manager');
 
 class RenderWhatsAppClient {
     constructor() {
@@ -19,7 +18,6 @@ class RenderWhatsAppClient {
         this._maxRetries = 3;
         this._isRender = process.env.RENDER || process.env.NODE_ENV === 'production';
         this._sessionStorage = new ExternalSessionStorage();
-        this._chromiumSessionManager = new ChromiumSessionManager();
 
         // Ensure session directory exists
         try { 
@@ -39,7 +37,7 @@ class RenderWhatsAppClient {
         // Ultra-lightweight Puppeteer configuration for memory optimization
         const puppeteerConfig = {
             headless: 'new',
-            userDataDir: this._chromiumSessionManager.getChromiumDataPath(), // Use persistent Chrome data directory
+            // Don't use userDataDir with LocalAuth - they're incompatible
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -137,11 +135,6 @@ class RenderWhatsAppClient {
             // Save session data to external storage with a delay
             setTimeout(async () => {
                 try {
-                    // Save both Chromium data and external session storage
-                    if (this._isRender) {
-                        await this._chromiumSessionManager.backupChromiumData();
-                        console.log('💾 Chromium session backed up');
-                    }
                     await this._saveSessionToExternal();
                 } catch (error) {
                     console.log('⚠️ Failed to save session to external storage:', error.message);
@@ -151,19 +144,6 @@ class RenderWhatsAppClient {
 
         this._onAuthenticated = async () => {
             console.log('🔒 WhatsApp authenticated.');
-            
-            // Save Chromium session data after authentication
-            if (this._isRender) {
-                try {
-                    // Wait a bit for session to be fully established
-                    setTimeout(async () => {
-                        await this._chromiumSessionManager.backupChromiumData();
-                        console.log('💾 Chromium session backed up after authentication');
-                    }, 5000);
-                } catch (error) {
-                    console.log('⚠️ Failed to backup Chromium session:', error.message);
-                }
-            }
         };
 
         this._onAuthFailure = (m) => {
@@ -224,22 +204,15 @@ class RenderWhatsAppClient {
         try {
             console.log('🚀 Initializing WhatsApp client...');
             
-            // Try to restore Chromium session first
+            // Try to restore session from external storage first
             if (this._isRender) {
-                console.log('🔄 Attempting to restore Chromium session...');
-                const restored = await this._chromiumSessionManager.restoreChromiumData();
-                if (restored && this._chromiumSessionManager.hasValidSession()) {
-                    console.log('✅ Valid Chromium session restored');
+                console.log('🔄 Attempting to restore session from external storage...');
+                const restored = await this._loadSessionFromExternal();
+                if (restored) {
+                    console.log('✅ Session restored successfully from external storage');
                 } else {
-                    console.log('ℹ️ No valid Chromium session found, trying external storage...');
-                    // Fallback to old session restoration method
-                    const legacyRestored = await this._loadSessionFromExternal();
-                    if (legacyRestored) {
-                        console.log('✅ Legacy session restored from external storage');
-                    } else {
-                        console.log('ℹ️ No existing session found, will require QR scan');
-                        console.log('💡 After authentication, session will be saved for future deployments');
-                    }
+                    console.log('ℹ️ No existing session found, will require QR scan');
+                    console.log('💡 After authentication, session will be saved for future deployments');
                 }
             }
             
@@ -387,15 +360,26 @@ class RenderWhatsAppClient {
             }
             
             if (this.client) {
-                this.client.removeListener('qr', this._onQr);
-                this.client.removeListener('ready', this._onReady);
-                this.client.removeListener('authenticated', this._onAuthenticated);
-                this.client.removeListener('auth_failure', this._onAuthFailure);
-                this.client.removeListener('disconnected', this._onDisconnected);
-                await this.client.destroy();
+                // Remove listeners safely
+                try {
+                    this.client.removeListener('qr', this._onQr);
+                    this.client.removeListener('ready', this._onReady);
+                    this.client.removeListener('authenticated', this._onAuthenticated);
+                    this.client.removeListener('auth_failure', this._onAuthFailure);
+                    this.client.removeListener('disconnected', this._onDisconnected);
+                } catch (e) {
+                    console.log('⚠️ Error removing listeners:', e.message);
+                }
+                
+                // Destroy client safely
+                try {
+                    await this.client.destroy();
+                } catch (e) {
+                    console.log('⚠️ Error destroying client:', e.message);
+                }
             }
         } catch (err) {
-            console.error('Error during WhatsApp client destroy:', err.message);
+            console.log('⚠️ Error during WhatsApp client destroy:', err.message);
         } finally {
             this.client = null;
             this._ready = false;
