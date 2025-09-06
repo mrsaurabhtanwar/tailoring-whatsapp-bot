@@ -14,6 +14,13 @@ const { generateMessage } = require("./templates.js");
 
 const app = express();
 
+// Set timeouts for better Render compatibility
+app.use((req, res, next) => {
+  req.setTimeout(30000); // 30 seconds
+  res.setTimeout(30000);
+  next();
+});
+
 // Limit request body to avoid memory spikes
 app.use(express.json({ limit: "64kb" }));
 

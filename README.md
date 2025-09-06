@@ -1,169 +1,176 @@
-# Tailoring WhatsApp Bot - Render Optimized
+# 🧵 Tailoring WhatsApp Bot - Render Optimized
 
-A lightweight WhatsApp automation bot for tailoring shops to send order ready notifications to customers. Optimized for Render deployment with session persistence and memory efficiency.
+A lightweight WhatsApp automation bot for tailoring shops, optimized for seamless deployment on Render.
 
-## Features
+## 🌟 Features
 
-- ✅ **Lightweight & Memory Optimized** - Uses only 256MB memory limit
-- ✅ **Session Persistence** - WhatsApp sessions saved to disk storage
-- ✅ **Render Ready** - Pre-configured for Render deployment
-- ✅ **Auto QR Generation** - Automatic QR code generation for authentication
-- ✅ **Webhook API** - Simple REST API for order notifications
-- ✅ **Health Monitoring** - Built-in health checks and monitoring
+- ✅ Order ready notifications in Hindi
+- 📱 QR code authentication system
+- 💾 Session persistence for production
+- 🔄 Auto-reconnection handling
+- 📊 Memory optimization for Render free tier
+- 🎯 Rate limiting and message queuing
+- 🔧 Health checks and monitoring
 
-## Quick Deploy to Render
+## 🚀 Quick Deploy to Render
 
 ### Option 1: One-Click Deploy
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/mrsaurabhtanwar/tailoring-whatsapp-bot)
 
 ### Option 2: Manual Deploy
 
 1. **Fork this repository** to your GitHub account
+
 2. **Connect to Render:**
-   - Go to [render.com](https://render.com)
-   - Sign up/Login with GitHub
+   - Go to [Render Dashboard](https://dashboard.render.com)
    - Click "New +" → "Web Service"
-   - Connect your forked repository
+   - Connect your GitHub repo
 
 3. **Configure the service:**
    - **Name:** `tailoring-whatsapp-bot`
-   - **Environment:** `Node`
-   - **Build Command:** `npm install`
-   - **Start Command:** `npm start`
-   - **Plan:** `Starter` (Free tier)
+   - **Branch:** `main`
+   - **Build Command:** `npm cache clean --force && npm ci --no-audit --no-fund --prefer-offline --timeout=300000 && chmod +x start.sh`
+   - **Start Command:** `./start.sh`
 
-4. **Add Environment Variables:**
-   - `NODE_ENV` = `production`
-   - `RENDER` = `true`
-   - `SEND_DELAY_MS` = `1000`
+4. **Set Environment Variables:**
+   ```
+   NODE_ENV=production
+   RENDER=true
+   SEND_DELAY_MS=1000
+   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+   PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+   NODE_OPTIONS=--max-old-space-size=256
+   ```
 
-5. **Deploy!** Click "Create Web Service"
+5. **Deploy** and wait for the build to complete
 
-## Local Development
+## 📱 Setup WhatsApp Authentication
+
+1. **Access your deployed service:** `https://your-app-name.onrender.com`
+
+2. **Scan QR Code:**
+   - Visit: `https://your-app-name.onrender.com/scanner`
+   - Or get QR directly: `https://your-app-name.onrender.com/qr`
+   - Scan with WhatsApp → Settings → Linked Devices → Link a Device
+
+3. **Verify Status:**
+   - Check: `https://your-app-name.onrender.com/session-status`
+   - Should show `"authenticated": true`
+
+## 🔧 API Usage
+
+### Send Order Ready Notification
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
+curl -X POST https://your-app-name.onrender.com/webhook/order-ready \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "राहुल शर्मा",
+    "phone": "9876543210",
+    "item": "शर्ट",
+    "orderId": "ORD123",
+    "dueDate": "2024-01-15",
+    "price": 1500,
+    "advancePayment": 500,
+    "remainingAmount": 1000
+  }'
+```
+
+### Health Check
+```bash
+curl https://your-app-name.onrender.com/healthz
+```
+
+## 🛠 Troubleshooting
+
+### Build Issues
+If npm install gets stuck:
+
+1. **Check build logs** in Render dashboard
+2. **Try manual redeploy** with cache clearing
+3. **Use alternative build command:**
+   ```bash
+   rm -f package-lock.json && npm cache clean --force && npm install --no-package-lock --timeout=300000
+   ```
+
+### WhatsApp Connection Issues
+- **QR Code not loading:** Wait 2-3 minutes after deployment
+- **Authentication failed:** Clear browser cache and try new QR
+- **Session lost:** Re-scan QR code, sessions persist automatically
+
+### Memory Issues
+- Monitor memory usage: `https://your-app-name.onrender.com/`
+- Manual cleanup: `POST https://your-app-name.onrender.com/cleanup`
+
+## 📦 Local Development
+
+```bash
+# Clone repository
+git clone https://github.com/mrsaurabhtanwar/tailoring-whatsapp-bot.git
 cd tailoring-whatsapp-bot
 
 # Install dependencies
 npm install
 
+# Create environment file
+cp env.example .env
+
 # Start development server
 npm run dev
-
-# Access the application
-# Health check: http://localhost:5000/
-# QR Code: http://localhost:5000/qr
 ```
 
-## API Usage
+## 🔒 Environment Variables
 
-### Send Order Ready Notification
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `5000` | Server port |
+| `NODE_ENV` | `development` | Environment mode |
+| `SEND_DELAY_MS` | `600` | Message sending delay |
+| `SHOP_NAME` | `RS Tailors & Fabric` | Your shop name |
+| `SHOP_PHONE` | `8824781960` | Your shop phone |
 
-```bash
-curl -X POST https://your-app.onrender.com/webhook/order-ready \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "John Doe",
-    "phone": "9876543210",
-    "item": "Formal Suit",
-    "orderId": "ORD-001",
-    "dueDate": "2024-01-15",
-    "price": 2500,
-    "advancePayment": 1000,
-    "remainingAmount": 1500
-  }'
-```
+## 📋 Message Templates
 
-### Check Bot Status
+The bot supports multiple message types:
+- `orderReady` - Order completion notification
+- `orderConfirm` - Order confirmation
+- `reminder` - Collection reminder
+- `fittingReminder` - Fitting appointment
+- `paymentReminder` - Payment due
+- `festivalGreeting` - Festival wishes
+- `delayNotification` - Delivery delay
 
-```bash
-curl https://your-app.onrender.com/session-status
-```
+## 🔧 Advanced Configuration
 
-## WhatsApp Setup
+### Custom Message Templates
+Edit `templates.js` to customize messages in Hindi/English.
 
-1. **Deploy to Render** (follow steps above)
-2. **Access your app** at `https://your-app.onrender.com`
-3. **Get QR Code** at `https://your-app.onrender.com/qr`
-4. **Scan QR Code** with your WhatsApp mobile app
-5. **Bot is ready!** Check status at `/session-status`
+### Session Storage
+- **Local:** File-based (default)
+- **JSONBin:** Set `JSONBIN_API_KEY` and `JSONBIN_BIN_ID`
+- **MongoDB:** Set `MONGODB_URI`
 
-## Environment Variables
+### Rate Limiting
+Adjust `SEND_DELAY_MS` to control message sending frequency.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NODE_ENV` | Environment mode | `production` |
-| `RENDER` | Render deployment flag | `true` |
-| `SEND_DELAY_MS` | Delay between messages | `1000` |
-| `SHOP_NAME` | Your shop name | `RS Tailors & Fabric` |
-| `SHOP_PHONE` | Your shop phone | `8824781960` |
+## 📊 Monitoring
 
-## API Endpoints
+- **Health Check:** `/healthz`
+- **Status:** `/`
+- **Session Status:** `/session-status`
+- **Memory Cleanup:** `POST /cleanup`
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Health check and bot status |
-| `/healthz` | GET | Strict health check for monitoring |
-| `/qr` | GET | Get QR code for WhatsApp authentication |
-| `/scanner` | GET | QR scanner page |
-| `/session-status` | GET | Detailed session information |
-| `/webhook/order-ready` | POST | Send order ready notification |
-| `/cleanup` | POST | Force memory cleanup |
+## 🆘 Support
 
-## Memory Optimization
+For issues and support:
+1. Check [Issues](https://github.com/mrsaurabhtanwar/tailoring-whatsapp-bot/issues)
+2. Create new issue with logs
+3. Contact: [Your Contact Info]
 
-This bot is optimized for Render's free tier:
-- **Memory Limit:** 256MB (vs 512MB in previous versions)
-- **Puppeteer Optimization:** Minimal Chrome flags for low memory usage
-- **Session Persistence:** WhatsApp sessions saved to external storage (JSONBin/MongoDB)
-- **Auto Cleanup:** Automatic memory management and garbage collection
+## 📄 License
 
-## Free Tier Session Persistence
+MIT License - see [LICENSE](LICENSE) file for details.
 
-**⚠️ Important:** Render's free tier has ephemeral filesystem - local session data is lost on restart.
+---
 
-**✅ Solution:** External session storage is built-in! Choose your preferred option:
-
-### Quick Setup with JSONBin (Recommended)
-1. Create free account at [jsonbin.io](https://jsonbin.io)
-2. Get API key and Bin ID
-3. Add environment variables to Render:
-   ```
-   SESSION_STORAGE_TYPE=jsonbin
-   JSONBIN_API_KEY=your_api_key
-   JSONBIN_BIN_ID=your_bin_id
-   ```
-4. Deploy and scan QR once - session persists forever!
-
-📖 **Detailed Guide:** See [FREE_TIER_SESSION_GUIDE.md](FREE_TIER_SESSION_GUIDE.md)
-
-## Troubleshooting
-
-### Bot Not Responding
-1. Check `/session-status` endpoint
-2. If session expired, scan QR code again at `/qr`
-3. Check Render logs for errors
-
-### Memory Issues
-1. Use `/cleanup` endpoint to force garbage collection
-2. Restart the service in Render dashboard
-3. Check memory usage in Render metrics
-
-### WhatsApp Authentication
-1. Ensure you scan the QR code within 2 minutes
-2. Use the same phone number consistently
-3. Don't use WhatsApp Web on multiple devices
-
-## Support
-
-For issues and questions:
-1. Check Render service logs
-2. Verify environment variables
-3. Test with `/session-status` endpoint
-4. Ensure WhatsApp session is active
-
-## License
-
-MIT License - Feel free to use and modify for your tailoring business!
+**Made with ❤️ for Tailoring Shops**

@@ -34,7 +34,7 @@ class RenderWhatsAppClient {
     }
 
     _createClient() {
-        // Render-optimized Puppeteer configuration with puppeteer-core
+        // Render-optimized Puppeteer configuration
         const puppeteerConfig = {
             headless: 'new',
             args: [
@@ -47,7 +47,6 @@ class RenderWhatsAppClient {
                 '--disable-extensions',
                 '--disable-plugins',
                 '--disable-images',
-                '--disable-javascript',
                 '--disable-default-apps',
                 '--disable-sync',
                 '--disable-translate',
@@ -56,12 +55,16 @@ class RenderWhatsAppClient {
                 '--no-default-browser-check',
                 '--no-first-run',
                 '--memory-pressure-off',
-                '--max_old_space_size=128',
-                '--single-process'
+                '--max_old_space_size=256',
+                '--single-process',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding'
             ],
             timeout: 0,
             protocolTimeout: 0,
-            // Let puppeteer handle Chrome installation automatically
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+            // Let puppeteer handle Chrome installation automatically on Render
         };
 
         this.client = new Client({
@@ -70,8 +73,8 @@ class RenderWhatsAppClient {
                 dataPath: this._sessionDir
             }),
             puppeteer: puppeteerConfig,
-            qrMaxRetries: 5,
-            authTimeoutMs: 120000,
+            qrMaxRetries: 3,
+            authTimeoutMs: 60000,
             restartOnAuthFail: true,
             takeoverOnConflict: true,
             takeoverTimeoutMs: 0
