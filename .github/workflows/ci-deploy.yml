@@ -41,10 +41,41 @@ jobs:
             echo "ℹ️ No build script found, skipping..."
           fi
 
-      - name: 🏥 Run verification script
+      - name: 🏥 Run verification tests
         run: |
-          chmod +x ./verify.sh
-          ./verify.sh
+          echo "🧪 Running basic verification tests..."
+          
+          # Test 1: Check if main files exist
+          echo "📁 Checking essential files..."
+          if [ ! -f "server.js" ]; then echo "❌ server.js missing"; exit 1; fi
+          if [ ! -f "whatsapp-client-azure.js" ]; then echo "❌ whatsapp-client-azure.js missing"; exit 1; fi
+          if [ ! -f "package.json" ]; then echo "❌ package.json missing"; exit 1; fi
+          if [ ! -f "templates.js" ]; then echo "❌ templates.js missing"; exit 1; fi
+          echo "✅ All essential files present"
+          
+          # Test 2: Check package.json structure
+          echo "📦 Validating package.json..."
+          if ! node -e "const pkg = require('./package.json'); if (!pkg.main) throw new Error('Missing main field'); if (!pkg.scripts || !pkg.scripts.start) throw new Error('Missing start script'); console.log('✅ package.json valid');"; then
+            echo "❌ package.json validation failed"
+            exit 1
+          fi
+          
+          # Test 3: Check if server.js can be parsed
+          echo "🔍 Validating server.js syntax..."
+          if ! node -c server.js; then
+            echo "❌ server.js has syntax errors"
+            exit 1
+          fi
+          echo "✅ server.js syntax valid"
+          
+          # Test 4: Check if WhatsApp client can be imported
+          echo "📱 Validating WhatsApp client..."
+          if ! node -e "const client = require('./whatsapp-client-azure.js'); console.log('✅ WhatsApp client import successful');"; then
+            echo "❌ WhatsApp client import failed"
+            exit 1
+          fi
+          
+          echo "🎉 All verification tests passed!"
 
       - name: 📊 Collect test results
         if: always()
@@ -95,13 +126,15 @@ jobs:
             -x "package.json.backup" \
             -x ".wwebjs_auth/*" \
             -x "current-qr.png" \
-            -x "verify.sh" \
             -x "deploy.sh" \
-            -x "cleanup-and-start.*" \
+            -x "deploy-with-session.sh" \
+            -x "upload-session-to-azure.ps1" \
+            -x "test-azure-deployment.ps1" \
             -x "post-build.sh" \
             -x "test-*.js" \
             -x "test*/**" \
-            -x "*.zip"
+            -x "*.zip" \
+            -x "*.md"
           
           # Check zip size
           ZIP_SIZE=$(du -h whatsapp-bot.zip | cut -f1)

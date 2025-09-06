@@ -9,17 +9,28 @@ if (process.env.NODE_ENV !== "production") {
   } catch {}
 }
 
-const AzureWhatsAppClient = require("./whatsapp-client-azure");
+const RenderWhatsAppClient = require("./whatsapp-client");
 const { generateMessage } = require("./templates.js");
+const MemoryGuardian = require("./memory-guardian");
 
 const app = express();
 
-// Limit request body to avoid memory spikes
-app.use(express.json({ limit: "64kb" }));
+// Initialize Memory Guardian FIRST
+const memoryGuardian = new MemoryGuardian();
+
+// Set timeouts for better Render compatibility
+app.use((req, res, next) => {
+  req.setTimeout(30000); // 30 seconds
+  res.setTimeout(30000);
+  next();
+});
+
+// Limit request body to avoid memory spikes  
+app.use(express.json({ limit: "16kb" })); // Further reduced for memory optimization
 
 const Bottleneck = require("bottleneck");
 // Initialize WhatsApp client
-const whatsappClient = new AzureWhatsAppClient();
+const whatsappClient = new RenderWhatsAppClient();
 const port = parseInt(process.env.PORT || "5000", 10);
 const sendDelay = parseInt(process.env.SEND_DELAY_MS || "600", 10);
 // Bottleneck limiter to throttle sends
@@ -107,10 +118,12 @@ app.get("/session-status", (req, res) => {
     const status = {
       authenticated: whatsappClient.isReady(),
       sessionExists: fs.existsSync(sessionPath),
-      qrCodeRequired:
-        !whatsappClient.isReady() && !fs.existsSync("current-qr.png"),
+      qrCodeRequired: !whatsappClient.isReady() && !fs.existsSync("current-qr.png"),
       sessionInfo: sessionInfo,
       lastCheck: new Date().toISOString(),
+      environment: process.env.RENDER ? "Render" : "Local",
+      sessionPath: authPath,
+      sessionPathExists: fs.existsSync(authPath)
     };
 
     res.json(status);
@@ -122,6 +135,17 @@ app.get("/session-status", (req, res) => {
 // Memory cleanup endpoint
 app.post("/cleanup", (req, res) => {
   try {
+    // Respect MemoryGuardian suspension
+    try {
+      const MG = require('./memory-guardian');
+      if (typeof MG.isSuspended === 'function' && MG.isSuspended()) {
+        return res.status(423).json({
+          success: false,
+          error: "Cleanup temporarily locked during critical initialization",
+        });
+      }
+    } catch {}
+
     const memBefore = process.memoryUsage();
 
     // Force garbage collection if available
@@ -246,7 +270,7 @@ app.post("/webhook/order-ready", async (req, res) => {
 
     // If memory is already high, reject early to protect the instance
     const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-    if (heapMB > 450) {
+    if (heapMB > 120) { // Increased threshold to allow for startup
       return res.status(503).json({
         success: false,
         error: "Server under memory pressure, try again shortly.",
@@ -325,7 +349,7 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-// Start server - bind to 0.0.0.0 for Replit environment
+// Start server - bind to 0.0.0.0 for deployment environment
 app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Server running on 0.0.0.0:${port}`);
   console.log(
