@@ -259,10 +259,12 @@ class RenderWhatsAppClient {
     async _initialize() {
         try {
             console.log('🚀 Initializing WhatsApp client...');
+            // Suspend memory guardian early to avoid GC during all startup steps
+            MemoryGuardian.suspend('whatsapp-init');
             
             // Add startup delay to allow system to stabilize
             console.log('⏳ Waiting for system to stabilize...');
-            await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+            await new Promise(resolve => setTimeout(resolve, 8000)); // 8 second delay
             
             // Try to restore session from external storage first
             if (this._isRender) {
@@ -278,17 +280,14 @@ class RenderWhatsAppClient {
             
             // Initialize with timeout and retry logic
             console.log('🔄 Starting WhatsApp client initialization...');
-            // Suspend memory guardian during critical init to avoid GC interference
-            MemoryGuardian.suspend('whatsapp-init');
-            try {
-                await this._initializeWithRetry();
-            } finally {
-                MemoryGuardian.resume('whatsapp-init');
-            }
+            await this._initializeWithRetry();
             
         } catch (err) {
             console.error('❌ Failed to initialize WhatsApp client:', err.message);
             this._handleFailure();
+        } finally {
+            // Always resume after initialization flow completes
+            MemoryGuardian.resume('whatsapp-init');
         }
     }
 

@@ -76,11 +76,6 @@ class MemoryGuardian {
             
             // Initialize checkCount if not exists
             this.checkCount = (this.checkCount || 0) + 1;
-            
-            // Log memory every 3 checks (30 seconds)
-            if (this.checkCount % 3 === 0) {
-                console.log(`🛡️ Memory: RSS=${rssMemoryMB}MB, Heap=${heapUsedMB}MB, External=${externalMB}MB`);
-            }
 
             // Check if we're in startup grace period
             const now = Date.now();
@@ -101,6 +96,11 @@ class MemoryGuardian {
                     console.log('⏱️ Memory Guardian suspended; skipping GC/cleanup during critical phase');
                 }
                 return;
+            }
+
+            // Log memory every 3 checks (30 seconds) when active
+            if (this.checkCount % 3 === 0) {
+                console.log(`🛡️ Memory: RSS=${rssMemoryMB}MB, Heap=${heapUsedMB}MB, External=${externalMB}MB`);
             }
             
             if (isInStartupGrace) {

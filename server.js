@@ -135,6 +135,17 @@ app.get("/session-status", (req, res) => {
 // Memory cleanup endpoint
 app.post("/cleanup", (req, res) => {
   try {
+    // Respect MemoryGuardian suspension
+    try {
+      const MG = require('./memory-guardian');
+      if (typeof MG.isSuspended === 'function' && MG.isSuspended()) {
+        return res.status(423).json({
+          success: false,
+          error: "Cleanup temporarily locked during critical initialization",
+        });
+      }
+    } catch {}
+
     const memBefore = process.memoryUsage();
 
     // Force garbage collection if available
