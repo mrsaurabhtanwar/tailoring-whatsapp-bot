@@ -97,10 +97,21 @@ class RenderWhatsAppClient {
                 '--disable-gpu-compositing',
                 '--memory-pressure-off',
                 '--max_old_space_size=150',
-                '--js-flags=--max-old-space-size=150'
+                '--js-flags=--max-old-space-size=150',
+                '--disable-hang-monitor',
+                '--disable-prompt-on-repost',
+                '--disable-domain-reliability',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-background-mode',
+                '--disable-client-side-phishing-detection',
+                '--disable-sync-preferences',
+                '--disable-default-apps',
+                '--disable-web-resources',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection'
             ],
-            timeout: 45000, // Reduced timeout for faster failure detection
-            protocolTimeout: 45000,
+            timeout: 60000, // Increased timeout for stability
+            protocolTimeout: 60000,
             // Let Puppeteer handle Chrome download automatically
             // Don't specify executablePath to allow auto-download
         };
@@ -111,11 +122,11 @@ class RenderWhatsAppClient {
                 dataPath: this._sessionDir
             }),
             puppeteer: puppeteerConfig,
-            qrMaxRetries: 3, // Reduced retries for faster failure
-            authTimeoutMs: 90000, // Reduced timeout
+            qrMaxRetries: 5, // Increased retries for better success
+            authTimeoutMs: 120000, // Increased timeout for stability
             restartOnAuthFail: false,
             takeoverOnConflict: false,
-            takeoverTimeoutMs: 45000, // Reduced timeout
+            takeoverTimeoutMs: 60000, // Increased timeout
             // Add session persistence options
             session: null,
             // Add connection stability options
@@ -269,10 +280,89 @@ class RenderWhatsAppClient {
                 }
             }
             
-            await this.client.initialize();
+            // Initialize with timeout and retry logic
+            console.log('🔄 Starting WhatsApp client initialization...');
+            await this._initializeWithRetry();
+            
         } catch (err) {
             console.error('❌ Failed to initialize WhatsApp client:', err.message);
             this._handleFailure();
+        }
+    }
+
+    async _initializeWithRetry() {
+        const maxRetries = 3;
+        const retryDelay = 10000; // 10 seconds
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`🔄 Initialization attempt ${attempt}/${maxRetries}...`);
+                
+                // Set a timeout for the initialization
+                const initPromise = this.client.initialize();
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Initialization timeout')), 120000); // 2 minutes
+                });
+                
+                await Promise.race([initPromise, timeoutPromise]);
+                console.log('✅ WhatsApp client initialized successfully');
+                return;
+                
+            } catch (error) {
+                console.log(`❌ Initialization attempt ${attempt} failed:`, error.message);
+                
+                if (attempt === maxRetries) {
+                    // On final attempt, try clearing session and starting fresh
+                    console.log('🔄 Final attempt: Clearing session and starting fresh...');
+                    await this._clearSessionAndRetry();
+                    throw error;
+                }
+                
+                console.log(`⏳ Waiting ${retryDelay/1000}s before retry...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                
+                // Try to clean up before retry
+                try {
+                    if (this.client) {
+                        await this.client.destroy();
+                    }
+                } catch (cleanupError) {
+                    console.log('⚠️ Cleanup error:', cleanupError.message);
+                }
+                
+                // Recreate client for retry
+                this._createClient();
+                this._wireEvents();
+            }
+        }
+    }
+
+    async _clearSessionAndRetry() {
+        try {
+            console.log('🧹 Clearing potentially corrupted session...');
+            
+            // Clear local session files
+            const sessionPath = path.join(this._sessionDir, 'session-tailoring-shop-bot');
+            if (fs.existsSync(sessionPath)) {
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+                console.log('✅ Local session cleared');
+            }
+            
+            // Clear external session storage
+            await this._sessionStorage.clearSession();
+            console.log('✅ External session cleared');
+            
+            // Recreate client without session
+            this._createClient();
+            this._wireEvents();
+            
+            console.log('🔄 Retrying initialization with fresh session...');
+            await this.client.initialize();
+            console.log('✅ Fresh session initialization successful');
+            
+        } catch (error) {
+            console.log('❌ Fresh session initialization failed:', error.message);
+            throw error;
         }
     }
 

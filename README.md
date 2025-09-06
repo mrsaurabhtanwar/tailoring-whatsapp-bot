@@ -115,6 +115,12 @@ If npm install gets stuck:
 - Monitor memory usage during first 2 minutes
 - Verify grace period is working (startup thresholds: 120MB/180MB)
 
+### Initialization Timeouts
+- Check initialization timeout fix: `INITIALIZATION_TIMEOUT_FIX.md`
+- Monitor initialization attempts and retries
+- Verify session restoration is working
+- Check for corrupted session recovery
+
 ## 📦 Local Development
 
 ```bash
