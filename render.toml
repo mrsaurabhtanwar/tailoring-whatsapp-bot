@@ -5,7 +5,7 @@ type = "web"
 name = "tailoring-whatsapp-bot"
 env = "node"
 plan = "starter"
-buildCommand = "npm cache clean --force && npm ci --no-audit --no-fund --prefer-offline --timeout=300000 && chmod +x start.sh"
+buildCommand = "rm -f package-lock.json && npm cache clean --force && npm install --no-package-lock --no-audit --no-fund --timeout=300000 && chmod +x start.sh"
 startCommand = "./start.sh"
 healthCheckPath = "/healthz"
 
