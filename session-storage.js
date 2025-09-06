@@ -7,12 +7,14 @@ const axios = require('axios');
 
 class ExternalSessionStorage {
     constructor() {
-        this.storageType = process.env.SESSION_STORAGE_TYPE || 'file';
+        this.storageType = process.env.SESSION_STORAGE_TYPE || 'jsonbin'; // Default to jsonbin for persistence
         this.jsonbinApiKey = process.env.JSONBIN_API_KEY;
         this.jsonbinMasterKey = process.env.JSONBIN_MASTER_KEY;
         this.jsonbinBinId = process.env.JSONBIN_BIN_ID;
         this.mongoUri = process.env.MONGODB_URI;
         this.localPath = path.join(__dirname, '.wwebjs_auth');
+        this.lastSaveTime = 0;
+        this.saveDebounceMs = 5000; // Save at most once every 5 seconds
         
         // Auto-fallback to file storage if external storage not configured
         if (this.storageType === 'jsonbin' && (!this.jsonbinApiKey || !this.jsonbinBinId)) {
@@ -30,11 +32,21 @@ class ExternalSessionStorage {
         if (this.storageType === 'file') {
             console.log('ℹ️ Using local file storage - sessions will not persist across Render restarts');
             console.log('💡 To enable persistent sessions, set up JSONBin or MongoDB storage');
+        } else {
+            console.log('✅ External session storage configured - sessions will persist across restarts');
         }
     }
 
     async saveSession(sessionData) {
         try {
+            // Debounce saves to prevent excessive API calls
+            const now = Date.now();
+            if (now - this.lastSaveTime < this.saveDebounceMs) {
+                console.log('💾 Session save debounced (too frequent)');
+                return;
+            }
+            this.lastSaveTime = now;
+
             console.log(`💾 Saving session to ${this.storageType} storage...`);
             
             switch (this.storageType) {
@@ -43,13 +55,29 @@ class ExternalSessionStorage {
                         console.log('⚠️ JSONBin credentials missing, falling back to file storage');
                         return await this._saveToFile(sessionData);
                     }
-                    return await this._saveToJsonBin(sessionData);
+                    try {
+                        const result = await this._saveToJsonBin(sessionData);
+                        // Also save locally as backup
+                        await this._saveToFile(sessionData);
+                        return result;
+                    } catch (error) {
+                        console.log('⚠️ JSONBin save failed, using file backup:', error.message);
+                        return await this._saveToFile(sessionData);
+                    }
                 case 'mongodb':
                     if (!this.mongoUri) {
                         console.log('⚠️ MongoDB URI missing, falling back to file storage');
                         return await this._saveToFile(sessionData);
                     }
-                    return await this._saveToMongoDB(sessionData);
+                    try {
+                        const result = await this._saveToMongoDB(sessionData);
+                        // Also save locally as backup
+                        await this._saveToFile(sessionData);
+                        return result;
+                    } catch (error) {
+                        console.log('⚠️ MongoDB save failed, using file backup:', error.message);
+                        return await this._saveToFile(sessionData);
+                    }
                 case 'file':
                 default:
                     return await this._saveToFile(sessionData);

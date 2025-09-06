@@ -11,8 +11,12 @@ if (process.env.NODE_ENV !== "production") {
 
 const RenderWhatsAppClient = require("./whatsapp-client");
 const { generateMessage } = require("./templates.js");
+const MemoryGuardian = require("./memory-guardian");
 
 const app = express();
+
+// Initialize Memory Guardian FIRST
+const memoryGuardian = new MemoryGuardian();
 
 // Set timeouts for better Render compatibility
 app.use((req, res, next) => {
@@ -21,8 +25,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Limit request body to avoid memory spikes
-app.use(express.json({ limit: "64kb" }));
+// Limit request body to avoid memory spikes  
+app.use(express.json({ limit: "32kb" })); // Reduced from 64kb
+
+// Start memory monitoring immediately
+setInterval(checkMemoryUsage, MEMORY_CHECK_INTERVAL);
+checkMemoryUsage(); // Initial check
 
 const Bottleneck = require("bottleneck");
 // Initialize WhatsApp client

@@ -21,7 +21,7 @@ services:
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/project/src/.puppeteer_cache
       - key: NODE_OPTIONS
-        value: "--max-old-space-size=200 --expose-gc"
+        value: "--max-old-space-size=150 --expose-gc"
       - key: SESSION_STORAGE_TYPE
         value: jsonbin
       - key: JSONBIN_BIN_ID
