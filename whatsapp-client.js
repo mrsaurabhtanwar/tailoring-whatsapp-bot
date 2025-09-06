@@ -184,9 +184,10 @@ class RenderWhatsAppClient {
                 console.log('🔄 Attempting to restore session from external storage...');
                 const restored = await this._loadSessionFromExternal();
                 if (restored) {
-                    console.log('✅ Session restored, initializing with existing session...');
+                    console.log('✅ Session restored successfully from external storage');
                 } else {
-                    console.log('ℹ️ No existing session found, will require QR scan...');
+                    console.log('ℹ️ No existing session found, will require QR scan');
+                    console.log('💡 After authentication, session will be saved for future deployments');
                 }
             }
             
@@ -236,12 +237,14 @@ class RenderWhatsAppClient {
 
     async _saveSessionToExternal() {
         try {
+            console.log('💾 Preparing to save session to external storage...');
             // Read session files and save to external storage
             const sessionData = {};
             
             if (fs.existsSync(this._sessionDir)) {
                 const sessionPath = path.join(this._sessionDir, 'session-tailoring-shop-bot');
                 if (fs.existsSync(sessionPath)) {
+                    console.log('📁 Reading session files from:', sessionPath);
                     // Read key session files
                     const keyFiles = ['Local State', 'Preferences', 'Default/Login Data'];
                     for (const file of keyFiles) {
@@ -249,8 +252,9 @@ class RenderWhatsAppClient {
                         if (fs.existsSync(filePath)) {
                             try {
                                 sessionData[file] = fs.readFileSync(filePath);
+                                console.log(`✅ Read session file: ${file}`);
                             } catch (e) {
-                                console.log(`⚠️ Could not read ${file}`);
+                                console.log(`⚠️ Could not read session file: ${file}`);
                             }
                         }
                     }
@@ -258,7 +262,11 @@ class RenderWhatsAppClient {
             }
             
             if (Object.keys(sessionData).length > 0) {
+                console.log(`💾 Saving ${Object.keys(sessionData).length} session files to external storage...`);
                 await this._sessionStorage.saveSession(sessionData);
+                console.log('✅ Session saved to external storage successfully');
+            } else {
+                console.log('⚠️ No session data found to save');
             }
         } catch (error) {
             console.log('⚠️ Failed to save session data:', error.message);

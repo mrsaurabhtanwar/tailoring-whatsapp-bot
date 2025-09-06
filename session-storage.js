@@ -13,39 +13,84 @@ class ExternalSessionStorage {
         this.mongoUri = process.env.MONGODB_URI;
         this.localPath = path.join(__dirname, '.wwebjs_auth');
         
+        // Auto-fallback to file storage if external storage not configured
+        if (this.storageType === 'jsonbin' && (!this.jsonbinApiKey || !this.jsonbinBinId)) {
+            console.log('⚠️ JSONBin credentials not found, falling back to file storage');
+            this.storageType = 'file';
+        }
+        
+        if (this.storageType === 'mongodb' && !this.mongoUri) {
+            console.log('⚠️ MongoDB URI not found, falling back to file storage');
+            this.storageType = 'file';
+        }
+        
         console.log(`📦 Session Storage: ${this.storageType}`);
+        
+        if (this.storageType === 'file') {
+            console.log('ℹ️ Using local file storage - sessions will not persist across Render restarts');
+            console.log('💡 To enable persistent sessions, set up JSONBin or MongoDB storage');
+        }
     }
 
     async saveSession(sessionData) {
         try {
+            console.log(`💾 Saving session to ${this.storageType} storage...`);
+            
             switch (this.storageType) {
                 case 'jsonbin':
+                    if (!this.jsonbinApiKey || !this.jsonbinBinId) {
+                        console.log('⚠️ JSONBin credentials missing, falling back to file storage');
+                        return await this._saveToFile(sessionData);
+                    }
                     return await this._saveToJsonBin(sessionData);
                 case 'mongodb':
+                    if (!this.mongoUri) {
+                        console.log('⚠️ MongoDB URI missing, falling back to file storage');
+                        return await this._saveToFile(sessionData);
+                    }
                     return await this._saveToMongoDB(sessionData);
                 case 'file':
                 default:
                     return await this._saveToFile(sessionData);
             }
         } catch (error) {
-            console.error('❌ Failed to save session:', error.message);
+            console.error(`❌ Failed to save session to ${this.storageType}:`, error.message);
+            // Try fallback to file storage
+            if (this.storageType !== 'file') {
+                console.log('🔄 Attempting fallback to file storage...');
+                try {
+                    return await this._saveToFile(sessionData);
+                } catch (fallbackError) {
+                    console.error('❌ Fallback to file storage also failed:', fallbackError.message);
+                }
+            }
             throw error;
         }
     }
 
     async loadSession() {
         try {
+            console.log(`🔄 Attempting to load session from ${this.storageType} storage...`);
+            
             switch (this.storageType) {
                 case 'jsonbin':
+                    if (!this.jsonbinApiKey || !this.jsonbinBinId) {
+                        console.log('⚠️ JSONBin credentials missing, skipping external session load');
+                        return null;
+                    }
                     return await this._loadFromJsonBin();
                 case 'mongodb':
+                    if (!this.mongoUri) {
+                        console.log('⚠️ MongoDB URI missing, skipping external session load');
+                        return null;
+                    }
                     return await this._loadFromMongoDB();
                 case 'file':
                 default:
                     return await this._loadFromFile();
             }
         } catch (error) {
-            console.log('ℹ️ No existing session found or failed to load');
+            console.log(`ℹ️ No existing session found in ${this.storageType} storage:`, error.message);
             return null;
         }
     }
