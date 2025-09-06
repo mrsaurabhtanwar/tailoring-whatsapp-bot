@@ -1,429 +1,169 @@
-# WhatsApp Tailoring Shop Bot
+# Tailoring WhatsApp Bot - Render Optimized
 
-A WhatsApp automation bot for tailoring shops that sends order ready notifications to customers.
+A lightweight WhatsApp automation bot for tailoring shops to send order ready notifications to customers. Optimized for Render deployment with session persistence and memory efficiency.
 
 ## Features
 
-- 📱 WhatsApp message automation via whatsapp-web.js
-- 🔗 Webhook integration for order notifications
-- 📷 QR code authentication with session persistence
-- ☁️ Ready for Azure F1 (Free Tier) deployment
-- 🛡️ Memory-optimized with throttling and health checks
+- ✅ **Lightweight & Memory Optimized** - Uses only 256MB memory limit
+- ✅ **Session Persistence** - WhatsApp sessions saved to disk storage
+- ✅ **Render Ready** - Pre-configured for Render deployment
+- ✅ **Auto QR Generation** - Automatic QR code generation for authentication
+- ✅ **Webhook API** - Simple REST API for order notifications
+- ✅ **Health Monitoring** - Built-in health checks and monitoring
 
-## Quick Start
+## Quick Deploy to Render
 
-### 1. Clone and Setup
+### Option 1: One-Click Deploy
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
-```bash
-git clone https://github.com/mrsaurabhtanwar/tailoring-whatsapp-bot.git
-cd tailoring-whatsapp-bot
-npm install
-```
+### Option 2: Manual Deploy
 
-### 2. Local Development
+1. **Fork this repository** to your GitHub account
+2. **Connect to Render:**
+   - Go to [render.com](https://render.com)
+   - Sign up/Login with GitHub
+   - Click "New +" → "Web Service"
+   - Connect your forked repository
 
-```bash
-# Start the application
-npm start
+3. **Configure the service:**
+   - **Name:** `tailoring-whatsapp-bot`
+   - **Environment:** `Node`
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+   - **Plan:** `Starter` (Free tier)
 
-# Or for development with auto-restart
-npm run dev
-```
+4. **Add Environment Variables:**
+   - `NODE_ENV` = `production`
+   - `RENDER` = `true`
+   - `SEND_DELAY_MS` = `1000`
 
-### 3. Authenticate WhatsApp
+5. **Deploy!** Click "Create Web Service"
 
-1. Visit `http://localhost:5000/scanner` in your browser
-2. Open WhatsApp on your mobile phone
-3. Go to **Settings** → **Linked Devices** → **Link a Device**
-4. Scan the QR code displayed
-5. Wait for authentication success message
-
-### 4. Test Your Bot
-
-Send a POST request to `/webhook/order-ready`:
-
-```bash
-curl -X POST http://localhost:5000/webhook/order-ready \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "John Doe", 
-    "phone": "9876543210",
-    "item": "Formal Shirt",
-    "dueDate": "2024-01-20"
-  }'
-```
-
-## Deploy to Azure F1 (Free Tier)
-
-### Prerequisites
-
-1. **Install Azure CLI**: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli
-2. **Azure Account**: Get free account at https://azure.microsoft.com/free/students
-3. **GitHub Account**: For automated deployments
-
-### Option 1: Automated Deployment (Recommended)
+## Local Development
 
 ```bash
 # Clone the repository
-git clone https://github.com/mrsaurabhtanwar/tailoring-whatsapp-bot.git
+git clone <your-repo-url>
 cd tailoring-whatsapp-bot
 
-# Make scripts executable
-chmod +x verify.sh deploy.sh
+# Install dependencies
+npm install
 
-# Run verification locally first
-./verify.sh
+# Start development server
+npm run dev
 
-# Login to Azure
-az login
-
-# Deploy to Azure (creates all resources automatically)
-export APP_NAME="your-unique-bot-name-2024"
-./deploy.sh --app-name $APP_NAME
+# Access the application
+# Health check: http://localhost:5000/
+# QR Code: http://localhost:5000/qr
 ```
 
-### Option 2: Manual Azure Setup
+## API Usage
 
-#### Step 1: Create Azure Resources
-
-```bash
-# Login to Azure
-az login
-
-# Set your subscription (if you have multiple)
-az account set --subscription "YOUR_SUBSCRIPTION_ID"
-
-# Create resource group in Central India
-az group create --name whatsapp-bot-rg --location centralindia
-
-# Create App Service Plan (F1 Free Tier)
-az appservice plan create \
-  --name whatsapp-bot-plan \
-  --resource-group whatsapp-bot-rg \
-  --location centralindia \
-  --is-linux \
-  --sku F1
-
-# Create Web App with Node.js 18 runtime
-az webapp create \
-  --resource-group whatsapp-bot-rg \
-  --plan whatsapp-bot-plan \
-  --name YOUR_UNIQUE_APP_NAME \
-  --runtime "NODE|18-lts"
-```
-
-#### Step 2: Configure App Settings
+### Send Order Ready Notification
 
 ```bash
-# Set recommended app settings for F1 tier
-az webapp config appsettings set \
-  --resource-group whatsapp-bot-rg \
-  --name YOUR_APP_NAME \
-  --settings \
-    WEBSITE_NODE_DEFAULT_VERSION=18.15.0 \
-    SCM_DO_BUILD_DURING_DEPLOYMENT=true \
-    NODE_ENV=production \
-    WEBSITE_RUN_FROM_PACKAGE=1 \
-    SEND_DELAY_MS=600
-```
-
-#### Step 3: Deploy Your Code
-
-```bash
-# Create deployment package
-zip -r whatsapp-bot.zip . \
-  -x "node_modules/*" ".git/*" "*.log" ".env*" \
-  -x ".wwebjs_auth/*" "current-qr.png"
-
-# Deploy to Azure
-az webapp deploy \
-  --resource-group whatsapp-bot-rg \
-  --name YOUR_APP_NAME \
-  --src-path whatsapp-bot.zip \
-  --type zip
-```
-
-### Option 3: GitHub Actions (CI/CD)
-
-#### Step 1: Get Publish Profile
-
-```bash
-# Get publish profile for GitHub Actions
-az webapp deployment list-publishing-profiles \
-  --name YOUR_APP_NAME \
-  --resource-group whatsapp-bot-rg \
-  --xml > publish_profile.xml
-
-# Copy the XML content from the file
-cat publish_profile.xml
-```
-
-#### Step 2: Setup GitHub Secrets
-
-1. Go to your GitHub repository
-2. Navigate to **Settings** → **Secrets and variables** → **Actions**
-3. Add these secrets:
-   - `AZURE_WEBAPP_PUBLISH_PROFILE`: Paste the XML content from above
-   - `AZURE_WEBAPP_NAME`: Your app name (e.g., `my-whatsapp-bot-2024`)
-
-#### Step 3: Deploy
-
-- Push to `main` branch to trigger automatic deployment, or
-- Go to **Actions** tab → **"CI & Deploy to Azure"** → **Run workflow**
-
-#### Step 4: Monitor Deployment
-
-```bash
-# Check deployment status in GitHub Actions
-# Verify health after deployment
-curl https://YOUR_APP_NAME.azurewebsites.net/health
-
-# Stream application logs
-az webapp log tail --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-```
-
-## Post-Deployment Setup
-
-### 1. Verify Deployment
-
-Visit your app URLs:
-- **App Status**: `https://YOUR_APP_NAME.azurewebsites.net`
-- **Health Check**: `https://YOUR_APP_NAME.azurewebsites.net/health`
-- **QR Scanner**: `https://YOUR_APP_NAME.azurewebsites.net/scanner`
-
-### 2. Authenticate WhatsApp
-
-1. Visit `https://YOUR_APP_NAME.azurewebsites.net/scanner`
-2. Scan QR code with WhatsApp mobile app
-3. Wait for "WhatsApp Client is ready!" message
-
-### 3. Test Webhook
-
-```bash
-curl -X POST https://YOUR_APP_NAME.azurewebsites.net/webhook/order-ready \
+curl -X POST https://your-app.onrender.com/webhook/order-ready \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Test Customer",
+    "name": "John Doe",
     "phone": "9876543210",
-    "item": "Test Order",
-    "dueDate": "2024-01-25"
+    "item": "Formal Suit",
+    "orderId": "ORD-001",
+    "dueDate": "2024-01-15",
+    "price": 2500,
+    "advancePayment": 1000,
+    "remainingAmount": 1500
   }'
 ```
 
-## Local Development & Testing
-
-### Run Verification Script
+### Check Bot Status
 
 ```bash
-# Test your app locally before deploying
-chmod +x ./verify.sh
-./verify.sh
+curl https://your-app.onrender.com/session-status
 ```
 
-### Development Server
+## WhatsApp Setup
 
-```bash
-# Start with development settings
-npm run dev
+1. **Deploy to Render** (follow steps above)
+2. **Access your app** at `https://your-app.onrender.com`
+3. **Get QR Code** at `https://your-app.onrender.com/qr`
+4. **Scan QR Code** with your WhatsApp mobile app
+5. **Bot is ready!** Check status at `/session-status`
 
-# Start with production settings (matches Azure)
-NODE_ENV=production npm start
-```
+## Environment Variables
 
-### Manual Testing
-
-```bash
-# Install dependencies
-npm ci
-
-# Check health endpoint
-curl http://localhost:5000/health
-
-# Test all endpoints
-curl http://localhost:5000/                    # App status
-curl http://localhost:5000/qr                  # QR code (may return 404 initially)
-curl http://localhost:5000/session-status      # WhatsApp session info
-```
-
-## Azure Management Commands
-
-### Monitor Your App
-
-```bash
-# Stream live logs
-az webapp log tail --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-
-# Download log files
-az webapp log download --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-
-# Check app status
-az webapp show --name YOUR_APP_NAME --resource-group whatsapp-bot-rg --query "state"
-```
-
-### App Management
-
-```bash
-# Restart app
-az webapp restart --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-
-# Stop/Start app
-az webapp stop --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-az webapp start --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-
-# View configuration
-az webapp config appsettings list --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-```
-
-### Update App Settings
-
-```bash
-# Add new environment variable
-az webapp config appsettings set \
-  --name YOUR_APP_NAME \
-  --resource-group whatsapp-bot-rg \
-  --settings "NEW_SETTING=value"
-
-# Update existing setting
-az webapp config appsettings set \
-  --name YOUR_APP_NAME \
-  --resource-group whatsapp-bot-rg \
-  --settings "SEND_DELAY_MS=800"
-```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NODE_ENV` | Environment mode | `production` |
+| `RENDER` | Render deployment flag | `true` |
+| `SEND_DELAY_MS` | Delay between messages | `1000` |
+| `SHOP_NAME` | Your shop name | `RS Tailors & Fabric` |
+| `SHOP_PHONE` | Your shop phone | `8824781960` |
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | App status and health information |
-| `/health` | GET | Health check (200 when ready) |
+| `/` | GET | Health check and bot status |
 | `/healthz` | GET | Strict health check for monitoring |
-| `/scanner` | GET | QR scanner page for authentication |
-| `/qr` | GET | QR code image for WhatsApp auth |
-| `/session-status` | GET | WhatsApp session information |
-| `/webhook/order-ready` | POST | Send order ready notifications |
-| `/cleanup` | POST | Manual memory cleanup |
+| `/qr` | GET | Get QR code for WhatsApp authentication |
+| `/scanner` | GET | QR scanner page |
+| `/session-status` | GET | Detailed session information |
+| `/webhook/order-ready` | POST | Send order ready notification |
+| `/cleanup` | POST | Force memory cleanup |
 
-## Webhook Payload
+## Memory Optimization
 
-### Required Fields
-```json
-{
-  "name": "Customer Name",
-  "phone": "9876543210",
-  "item": "Order Description"
-}
-```
+This bot is optimized for Render's free tier:
+- **Memory Limit:** 256MB (vs 512MB in previous versions)
+- **Puppeteer Optimization:** Minimal Chrome flags for low memory usage
+- **Session Persistence:** WhatsApp sessions saved to external storage (JSONBin/MongoDB)
+- **Auto Cleanup:** Automatic memory management and garbage collection
 
-### Optional Fields
-```json
-{
-  "name": "John Doe",
-  "phone": "9876543210", 
-  "item": "Formal Shirt",
-  "orderId": "ORD-123",
-  "orderDate": "2024-01-15",
-  "dueDate": "2024-01-20",
-  "price": 1500,
-  "advancePayment": 500,
-  "remainingAmount": 1000,
-  "shopName": "RS Tailors & Fabric",
-  "shopPhone": "8824781960"
-}
-```
+## Free Tier Session Persistence
 
-## Azure F1 Tier Optimization
+**⚠️ Important:** Render's free tier has ephemeral filesystem - local session data is lost on restart.
 
-### Benefits of F1 Tier
-- ✅ **Always Free**: $0 cost forever
-- ✅ **Always On**: No sleeping like Heroku
-- ✅ **165 min/day CPU**: Perfect for WhatsApp bot usage
-- ✅ **1GB Storage**: Sufficient for your app
-- ✅ **SSL Included**: HTTPS by default
-- ✅ **Custom Domains**: Supported
+**✅ Solution:** External session storage is built-in! Choose your preferred option:
 
-### Performance Considerations
-- **CPU Usage**: ~15-20 minutes/day for typical usage
-- **Memory**: Optimized for <1GB usage
-- **Response Time**: Usually <2 seconds
-- **Uptime**: 99.9%+ availability
+### Quick Setup with JSONBin (Recommended)
+1. Create free account at [jsonbin.io](https://jsonbin.io)
+2. Get API key and Bin ID
+3. Add environment variables to Render:
+   ```
+   SESSION_STORAGE_TYPE=jsonbin
+   JSONBIN_API_KEY=your_api_key
+   JSONBIN_BIN_ID=your_bin_id
+   ```
+4. Deploy and scan QR once - session persists forever!
 
-### Monitoring Usage
-```bash
-# Check current resource usage
-az monitor metrics list \
-  --resource "/subscriptions/YOUR_SUBSCRIPTION/resourceGroups/whatsapp-bot-rg/providers/Microsoft.Web/sites/YOUR_APP_NAME" \
-  --metric "CpuTime,MemoryWorkingSet,HttpRequestsPerMinute"
-```
+📖 **Detailed Guide:** See [FREE_TIER_SESSION_GUIDE.md](FREE_TIER_SESSION_GUIDE.md)
 
 ## Troubleshooting
 
-### Common Issues
+### Bot Not Responding
+1. Check `/session-status` endpoint
+2. If session expired, scan QR code again at `/qr`
+3. Check Render logs for errors
 
-#### 1. WhatsApp Authentication Failed
-```bash
-# Check session status
-curl https://YOUR_APP_NAME.azurewebsites.net/session-status
+### Memory Issues
+1. Use `/cleanup` endpoint to force garbage collection
+2. Restart the service in Render dashboard
+3. Check memory usage in Render metrics
 
-# Clear session and re-authenticate
-# Visit /scanner endpoint and scan new QR code
-```
+### WhatsApp Authentication
+1. Ensure you scan the QR code within 2 minutes
+2. Use the same phone number consistently
+3. Don't use WhatsApp Web on multiple devices
 
-#### 2. App Not Responding
-```bash
-# Check app status
-az webapp show --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
+## Support
 
-# Restart if needed
-az webapp restart --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-
-# Check logs
-az webapp log tail --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-```
-
-#### 3. Deployment Failed
-```bash
-# Check deployment status
-az webapp deployment list --name YOUR_APP_NAME --resource-group whatsapp-bot-rg
-
-# Verify local verification passes
-./verify.sh
-
-# Try manual deployment
-./deploy.sh --app-name YOUR_APP_NAME
-```
-
-#### 4. Memory Issues on F1 Tier
-```bash
-# Check memory usage
-curl https://YOUR_APP_NAME.azurewebsites.net/
-
-# Force memory cleanup
-curl -X POST https://YOUR_APP_NAME.azurewebsites.net/cleanup
-```
-
-### Getting Help
-
-1. **Check logs**: `az webapp log tail --name YOUR_APP_NAME --resource-group whatsapp-bot-rg`
-2. **Verify health**: Visit `/health` endpoint
-3. **Test locally**: Run `./verify.sh` 
-4. **GitHub Issues**: Create issue with logs and error details
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Run `./verify.sh` to test locally
-4. Submit a pull request with the checklist completed
-
-## Dependencies
-
-- `express` - Web framework
-- `whatsapp-web.js` - WhatsApp Web API
-- `bottleneck` - Rate limiting
-- `qrcode` - QR code generation
-- `axios` - HTTP client
-- `dotenv` - Environment configuration
+For issues and questions:
+1. Check Render service logs
+2. Verify environment variables
+3. Test with `/session-status` endpoint
+4. Ensure WhatsApp session is active
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License - Feel free to use and modify for your tailoring business!

@@ -1,10 +1,10 @@
 {
   "name": "tailoring-whatsapp-bot",
-  "version": "1.0.0",
-  "description": "WhatsApp automation for tailoring shop",
+  "version": "2.0.0",
+  "description": "Lightweight WhatsApp automation for tailoring shop - Render optimized",
   "main": "server.js",
   "scripts": {
-    "start": "node --max-old-space-size=512 server.js",
+    "start": "node --max-old-space-size=256 server.js",
     "dev": "node server.js"
   },
   "dependencies": {
@@ -12,27 +12,23 @@
     "bottleneck": "^2.19.5",
     "dotenv": "^16.0.0",
     "express": "^4.18.0",
-    "puppeteer": "^24.19.0",
+    "puppeteer": "^21.0.0",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.23.0"
   },
   "engines": {
-  "node": "20.x",
-  "npm": "10.x"
+    "node": "18.x",
+    "npm": "9.x"
   },
   "keywords": [
     "whatsapp",
     "bot",
     "tailoring",
     "automation",
-    "azure",
+    "render",
     "nodejs"
   ],
   "author": "Saurabh Tanwar",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/mrsaurabhtanwar/tailoring-whatsapp-bot.git"
-  }
+  "license": "MIT"
 }

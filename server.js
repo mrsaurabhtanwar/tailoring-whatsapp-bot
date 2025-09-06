@@ -9,7 +9,7 @@ if (process.env.NODE_ENV !== "production") {
   } catch {}
 }
 
-const PremiumWhatsAppClient = require("./whatsapp-client-premium");
+const RenderWhatsAppClient = require("./whatsapp-client");
 const { generateMessage } = require("./templates.js");
 
 const app = express();
@@ -19,7 +19,7 @@ app.use(express.json({ limit: "64kb" }));
 
 const Bottleneck = require("bottleneck");
 // Initialize WhatsApp client
-const whatsappClient = new PremiumWhatsAppClient();
+const whatsappClient = new RenderWhatsAppClient();
 const port = parseInt(process.env.PORT || "5000", 10);
 const sendDelay = parseInt(process.env.SEND_DELAY_MS || "600", 10);
 // Bottleneck limiter to throttle sends
@@ -110,7 +110,7 @@ app.get("/session-status", (req, res) => {
       qrCodeRequired: !whatsappClient.isReady() && !fs.existsSync("current-qr.png"),
       sessionInfo: sessionInfo,
       lastCheck: new Date().toISOString(),
-      environment: process.env.WEBSITE_SITE_NAME ? "Azure" : "Local",
+      environment: process.env.RENDER ? "Render" : "Local",
       sessionPath: authPath,
       sessionPathExists: fs.existsSync(authPath)
     };
@@ -248,7 +248,7 @@ app.post("/webhook/order-ready", async (req, res) => {
 
     // If memory is already high, reject early to protect the instance
     const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-    if (heapMB > 450) {
+    if (heapMB > 200) {
       return res.status(503).json({
         success: false,
         error: "Server under memory pressure, try again shortly.",
@@ -305,7 +305,7 @@ setInterval(() => {
   console.log(`💾 Server Memory: ${memUsageMB}MB`);
 
   // If memory usage is too high, log warning
-  if (memUsageMB > 450) {
+  if (memUsageMB > 200) {
     console.log("⚠️ High memory usage detected!");
   }
 }, 60000); // Check every minute
