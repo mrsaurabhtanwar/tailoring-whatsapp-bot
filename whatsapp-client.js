@@ -63,8 +63,8 @@ class RenderWhatsAppClient {
             ],
             timeout: 0,
             protocolTimeout: 0,
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-            // Let puppeteer handle Chrome installation automatically on Render
+            // Let Puppeteer handle Chrome download automatically
+            // Don't specify executablePath to allow auto-download
         };
 
         this.client = new Client({

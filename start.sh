@@ -7,15 +7,8 @@ echo "🚀 Starting WhatsApp Bot deployment..."
 if [ "$RENDER" = "true" ]; then
     echo "📦 Running on Render platform"
     
-    # Set Chrome path for Render
-    export PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
-    
-    # Check if Chrome is available
-    if command -v google-chrome-stable &> /dev/null; then
-        echo "✅ Chrome found at: $(which google-chrome-stable)"
-    else
-        echo "⚠️ Chrome not found, Puppeteer will download it"
-    fi
+    # Let Puppeteer download Chrome automatically
+    echo "🌐 Puppeteer will handle Chrome installation automatically"
     
     # Create necessary directories
     mkdir -p .wwebjs_auth .puppeteer_cache

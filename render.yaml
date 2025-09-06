@@ -20,8 +20,6 @@ services:
         value: false
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/project/src/.puppeteer_cache
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/google-chrome-stable
       - key: NODE_OPTIONS
         value: "--max-old-space-size=256"
     healthCheckPath: /healthz

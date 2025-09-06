@@ -48,7 +48,7 @@ NODE_ENV=production
 RENDER=true
 SEND_DELAY_MS=1000
 PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
-PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+PUPPETEER_CACHE_DIR=/opt/render/project/src/.puppeteer_cache
 NODE_OPTIONS=--max-old-space-size=256
 
 # 📦 Session Storage (Add these for persistent sessions)
