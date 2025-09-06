@@ -58,10 +58,12 @@ RUN groupadd -r botuser && useradd -r -g botuser -G audio,video botuser \
 COPY package*.json ./
 
 # Install dependencies with optimized settings for Railway
-RUN npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 120000 \
-    && npm config set fetch-timeout 300000 \
-    && npm ci --only=production --no-audit --no-fund
+# Remove package-lock.json if it exists to avoid version conflicts
+RUN rm -f package-lock.json && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-timeout 300000 && \
+    npm install --only=production --no-audit --no-fund --no-package-lock
 
 # Copy application files
 COPY --chown=botuser:botuser . .

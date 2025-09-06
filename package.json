@@ -6,9 +6,10 @@
   "scripts": {
     "start": "node --max-old-space-size=512 --expose-gc --optimize-for-size server.js",
     "dev": "node --expose-gc server.js",
-    "build": "echo 'No build step required'",
+    "build": "echo No build step required",
     "preinstall": "npm config set fetch-retry-mintimeout 20000 && npm config set fetch-retry-maxtimeout 120000 && npm config set fetch-timeout 300000",
-    "postinstall": "echo 'Installation completed successfully'",
+    "postinstall": "echo Installation completed successfully",
+    "clean-install": "npm cache clean --force && npm install --no-package-lock",
     "railway-up": "railway up",
     "railway-logs": "railway logs",
     "local-dev": "npm install && npm run dev"
@@ -21,7 +22,7 @@
     "bottleneck": "^2.19.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "puppeteer": "^23.10.0",
+    "puppeteer": "^23.11.1",
     "qrcode": "^1.5.3",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.25.0"
