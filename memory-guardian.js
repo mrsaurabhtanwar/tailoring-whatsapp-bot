@@ -6,11 +6,13 @@ const path = require('path');
 
 class MemoryGuardian {
     constructor() {
-        this.checkInterval = 5000; // Check every 5 seconds for faster response
-        this.criticalMemoryMB = 60;  // Critical at 60MB (lowered for free tier)
-        this.emergencyMemoryMB = 80; // Emergency at 80MB (lowered for free tier)
+        this.checkInterval = 10000; // Check every 10 seconds for startup stability
+        this.criticalMemoryMB = 100;  // Critical at 100MB (increased for startup)
+        this.emergencyMemoryMB = 150; // Emergency at 150MB (increased for startup)
         this.warningCount = 0;
-        this.maxWarnings = 1; // Reduced warnings before restart
+        this.maxWarnings = 3; // More warnings before restart
+        this.startupGracePeriod = 120000; // 2 minutes grace period for startup
+        this.startupTime = Date.now();
         this.isShuttingDown = false;
         this.sessionBackupPath = path.join(__dirname, 'emergency-session-backup.json');
         this.lastGCTime = 0;
@@ -58,13 +60,63 @@ class MemoryGuardian {
             // Initialize checkCount if not exists
             this.checkCount = (this.checkCount || 0) + 1;
             
-            // Log memory every 3 checks (15 seconds)
+            // Log memory every 3 checks (30 seconds)
             if (this.checkCount % 3 === 0) {
                 console.log(`🛡️ Memory: RSS=${rssMemoryMB}MB, Heap=${heapUsedMB}MB, External=${externalMB}MB`);
             }
 
-            // Periodic garbage collection
+            // Check if we're in startup grace period
             const now = Date.now();
+            const isInStartupGrace = (now - this.startupTime) < this.startupGracePeriod;
+            
+            if (isInStartupGrace) {
+                // During startup, use higher thresholds
+                const startupCriticalMB = 120;
+                const startupEmergencyMB = 180;
+                
+                if (rssMemoryMB > startupEmergencyMB) {
+                    console.log(`🚨 EMERGENCY MEMORY (Startup): ${rssMemoryMB}MB! Immediate restart!`);
+                    this.emergencyRestart();
+                    return;
+                }
+                
+                if (rssMemoryMB > startupCriticalMB) {
+                    this.warningCount++;
+                    console.log(`⚠️ Critical Memory (Startup): ${rssMemoryMB}MB (Warning ${this.warningCount}/${this.maxWarnings})`);
+                    this.forceGarbageCollection();
+                    
+                    if (this.warningCount >= this.maxWarnings) {
+                        console.log(`🚨 Too many memory warnings during startup! Controlled restart...`);
+                        this.controlledRestart();
+                    }
+                } else {
+                    this.warningCount = 0; // Reset warnings if memory is normal
+                }
+            } else {
+                // After startup, use normal thresholds
+                if (rssMemoryMB > this.emergencyMemoryMB) {
+                    console.log(`🚨 EMERGENCY MEMORY: ${rssMemoryMB}MB! Immediate restart to prevent crash!`);
+                    this.emergencyRestart();
+                    return;
+                }
+
+                if (rssMemoryMB > this.criticalMemoryMB) {
+                    this.warningCount++;
+                    console.log(`⚠️ Critical Memory: ${rssMemoryMB}MB (Warning ${this.warningCount}/${this.maxWarnings})`);
+                    
+                    // Aggressive garbage collection
+                    this.forceGarbageCollection();
+
+                    if (this.warningCount >= this.maxWarnings) {
+                        console.log(`🚨 Too many memory warnings! Controlled restart...`);
+                        this.controlledRestart();
+                    }
+                } else {
+                    this.warningCount = 0; // Reset warnings if memory is normal
+                }
+            }
+
+            // Periodic garbage collection
             if (now - this.lastGCTime > this.gcInterval) {
                 this.forceGarbageCollection();
                 this.lastGCTime = now;
@@ -74,27 +126,6 @@ class MemoryGuardian {
             if (now - this.lastCleanup > this.cleanupInterval) {
                 this.performCleanup();
                 this.lastCleanup = now;
-            }
-
-            if (rssMemoryMB > this.emergencyMemoryMB) {
-                console.log(`🚨 EMERGENCY MEMORY: ${rssMemoryMB}MB! Immediate restart to prevent crash!`);
-                this.emergencyRestart();
-                return;
-            }
-
-            if (rssMemoryMB > this.criticalMemoryMB) {
-                this.warningCount++;
-                console.log(`⚠️ Critical Memory: ${rssMemoryMB}MB (Warning ${this.warningCount}/${this.maxWarnings})`);
-                
-                // Aggressive garbage collection
-                this.forceGarbageCollection();
-
-                if (this.warningCount >= this.maxWarnings) {
-                    console.log(`🚨 Too many memory warnings! Controlled restart...`);
-                    this.controlledRestart();
-                }
-            } else {
-                this.warningCount = 0; // Reset warnings if memory is normal
             }
         } catch (error) {
             console.log('❌ Memory check failed:', error.message);

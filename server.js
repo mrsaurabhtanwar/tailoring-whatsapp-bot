@@ -259,7 +259,7 @@ app.post("/webhook/order-ready", async (req, res) => {
 
     // If memory is already high, reject early to protect the instance
     const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-    if (heapMB > 60) { // Lowered threshold for free tier
+    if (heapMB > 120) { // Increased threshold to allow for startup
       return res.status(503).json({
         success: false,
         error: "Server under memory pressure, try again shortly.",

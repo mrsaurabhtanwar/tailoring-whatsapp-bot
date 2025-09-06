@@ -110,6 +110,11 @@ If npm install gets stuck:
 - Check session status: `/session-status`
 - Monitor keep-alive logs for connection health
 
+### Startup Issues
+- Check startup optimization guide: `STARTUP_OPTIMIZATION.md`
+- Monitor memory usage during first 2 minutes
+- Verify grace period is working (startup thresholds: 120MB/180MB)
+
 ## 📦 Local Development
 
 ```bash
@@ -177,11 +182,12 @@ Adjust `SEND_DELAY_MS` to control message sending frequency.
 
 The bot includes advanced memory management features:
 
-- **Memory Guardian**: Monitors memory usage and triggers cleanup
+- **Memory Guardian**: Monitors memory usage with startup grace period
 - **Session Keep-Alive**: Prevents WhatsApp disconnections
 - **Automatic Garbage Collection**: Runs every 30 seconds
-- **Memory Thresholds**: Critical at 60MB, Emergency at 80MB
+- **Memory Thresholds**: 100MB critical, 150MB emergency (with startup grace)
 - **Session Persistence**: External storage with JSONBin
+- **Startup Optimization**: 2-minute grace period for initialization
 
 ## 🆘 Support
 

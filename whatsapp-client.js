@@ -58,7 +58,7 @@ class RenderWhatsAppClient {
                 '--no-default-browser-check',
                 '--no-first-run',
                 '--memory-pressure-off',
-                '--max_old_space_size=100', // Reduced from 150MB
+                '--max_old_space_size=150', // Increased for startup stability
                 '--single-process',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
@@ -96,8 +96,8 @@ class RenderWhatsAppClient {
                 '--disable-accelerated-video',
                 '--disable-gpu-compositing',
                 '--memory-pressure-off',
-                '--max_old_space_size=100',
-                '--js-flags=--max-old-space-size=100'
+                '--max_old_space_size=150',
+                '--js-flags=--max-old-space-size=150'
             ],
             timeout: 45000, // Reduced timeout for faster failure detection
             protocolTimeout: 45000,
@@ -252,6 +252,10 @@ class RenderWhatsAppClient {
     async _initialize() {
         try {
             console.log('🚀 Initializing WhatsApp client...');
+            
+            // Add startup delay to allow system to stabilize
+            console.log('⏳ Waiting for system to stabilize...');
+            await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
             
             // Try to restore session from external storage first
             if (this._isRender) {
