@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node --max-old-space-size=256 server.js",
     "dev": "node server.js",
-    "postinstall": "echo 'Build completed successfully'"
+    "postinstall": "echo 'Build completed successfully'",
+    "build": "echo 'No build step required'",
+    "preinstall": "echo 'Starting dependency installation...'"
   },
   "config": {
     "puppeteer_skip_chromium_download": "false"
@@ -22,8 +24,8 @@
     "whatsapp-web.js": "^1.23.0"
   },
   "engines": {
-    "node": "18.x",
-    "npm": "9.x"
+    "node": "20.x",
+    "npm": "10.x"
   },
   "keywords": [
     "whatsapp",
