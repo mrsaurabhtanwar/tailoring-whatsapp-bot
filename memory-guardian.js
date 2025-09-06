@@ -1,18 +1,22 @@
-// Memory Guardian - Prevents Render crashes by monitoring and managing memory
-// Implements graceful restarts with session preservation
+// Enhanced Memory Guardian - Prevents Render crashes with aggressive memory management
+// Implements graceful restarts with session preservation and memory optimization
 
 const fs = require('fs');
 const path = require('path');
 
 class MemoryGuardian {
     constructor() {
-        this.checkInterval = 10000; // Check every 10 seconds
-        this.criticalMemoryMB = 80;  // Critical at 80MB
-        this.emergencyMemoryMB = 120; // Emergency at 120MB
+        this.checkInterval = 5000; // Check every 5 seconds for faster response
+        this.criticalMemoryMB = 60;  // Critical at 60MB (lowered for free tier)
+        this.emergencyMemoryMB = 80; // Emergency at 80MB (lowered for free tier)
         this.warningCount = 0;
-        this.maxWarnings = 2;
+        this.maxWarnings = 1; // Reduced warnings before restart
         this.isShuttingDown = false;
         this.sessionBackupPath = path.join(__dirname, 'emergency-session-backup.json');
+        this.lastGCTime = 0;
+        this.gcInterval = 30000; // Force GC every 30 seconds
+        this.cleanupInterval = 60000; // Cleanup every minute
+        this.lastCleanup = 0;
         
         this.startMonitoring();
     }
@@ -49,13 +53,27 @@ class MemoryGuardian {
             const memUsage = process.memoryUsage();
             const rssMemoryMB = Math.round(memUsage.rss / 1024 / 1024);
             const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+            const externalMB = Math.round(memUsage.external / 1024 / 1024);
             
             // Initialize checkCount if not exists
             this.checkCount = (this.checkCount || 0) + 1;
             
-            // Log memory every 5 checks (50 seconds)
-            if (this.checkCount % 5 === 0) {
-                console.log(`🛡️ Memory: ${rssMemoryMB}MB (Heap: ${heapUsedMB}MB)`);
+            // Log memory every 3 checks (15 seconds)
+            if (this.checkCount % 3 === 0) {
+                console.log(`🛡️ Memory: RSS=${rssMemoryMB}MB, Heap=${heapUsedMB}MB, External=${externalMB}MB`);
+            }
+
+            // Periodic garbage collection
+            const now = Date.now();
+            if (now - this.lastGCTime > this.gcInterval) {
+                this.forceGarbageCollection();
+                this.lastGCTime = now;
+            }
+
+            // Periodic cleanup
+            if (now - this.lastCleanup > this.cleanupInterval) {
+                this.performCleanup();
+                this.lastCleanup = now;
             }
 
             if (rssMemoryMB > this.emergencyMemoryMB) {
@@ -69,13 +87,7 @@ class MemoryGuardian {
                 console.log(`⚠️ Critical Memory: ${rssMemoryMB}MB (Warning ${this.warningCount}/${this.maxWarnings})`);
                 
                 // Aggressive garbage collection
-                if (typeof global.gc === 'function') {
-                    console.log('🧹 Running emergency garbage collection...');
-                    global.gc(true);
-                } else if (typeof gc === 'function') {
-                    console.log('🧹 Running emergency garbage collection...');
-                    gc(true);
-                }
+                this.forceGarbageCollection();
 
                 if (this.warningCount >= this.maxWarnings) {
                     console.log(`🚨 Too many memory warnings! Controlled restart...`);
@@ -87,6 +99,62 @@ class MemoryGuardian {
         } catch (error) {
             console.log('❌ Memory check failed:', error.message);
             // Don't restart on memory check errors
+        }
+    }
+
+    forceGarbageCollection() {
+        try {
+            if (typeof global.gc === 'function') {
+                console.log('🧹 Running garbage collection...');
+                global.gc(true);
+            } else if (typeof gc === 'function') {
+                console.log('🧹 Running garbage collection...');
+                gc(true);
+            }
+        } catch (error) {
+            console.log('⚠️ GC failed:', error.message);
+        }
+    }
+
+    performCleanup() {
+        try {
+            console.log('🧹 Performing memory cleanup...');
+            
+            // Clear any temporary files
+            this.cleanupTempFiles();
+            
+            // Clear any cached data
+            if (global.gc) {
+                global.gc(true);
+            }
+            
+            console.log('✅ Memory cleanup completed');
+        } catch (error) {
+            console.log('⚠️ Cleanup failed:', error.message);
+        }
+    }
+
+    cleanupTempFiles() {
+        try {
+            const tempFiles = [
+                'current-qr.png',
+                'qr-data-url.txt',
+                'emergency-session-backup.json'
+            ];
+            
+            for (const file of tempFiles) {
+                const filePath = path.join(__dirname, file);
+                if (fs.existsSync(filePath)) {
+                    const stat = fs.statSync(filePath);
+                    // Only delete files older than 5 minutes
+                    if (Date.now() - stat.mtime.getTime() > 300000) {
+                        fs.unlinkSync(filePath);
+                        console.log(`🗑️ Cleaned up old file: ${file}`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.log('⚠️ Temp file cleanup failed:', error.message);
         }
     }
 

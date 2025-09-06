@@ -1,16 +1,18 @@
-# 🧵 Tailoring WhatsApp Bot - Render Optimized
+# 🧵 Tailoring WhatsApp Bot - Memory Optimized
 
-A lightweight WhatsApp automation bot for tailoring shops, optimized for seamless deployment on Render.
+A lightweight WhatsApp automation bot for tailoring shops, optimized for Render's free tier with advanced memory management and session persistence.
 
 ## 🌟 Features
 
 - ✅ Order ready notifications in Hindi
 - 📱 QR code authentication system
-- 💾 Session persistence for production
-- 🔄 Auto-reconnection handling
-- 📊 Memory optimization for Render free tier
+- 💾 Session persistence with external storage
+- 🔄 Auto-reconnection with keep-alive
+- 📊 Advanced memory optimization (60-80MB usage)
 - 🎯 Rate limiting and message queuing
 - 🔧 Health checks and monitoring
+- 🛡️ Memory Guardian for crash prevention
+- 💓 Session Keep-Alive for connection stability
 
 ## 🚀 Quick Deploy to Render
 
@@ -29,17 +31,17 @@ A lightweight WhatsApp automation bot for tailoring shops, optimized for seamles
 3. **Configure the service:**
    - **Name:** `tailoring-whatsapp-bot`
    - **Branch:** `main`
-   - **Build Command:** `npm cache clean --force && npm ci --no-audit --no-fund --prefer-offline --timeout=300000 && chmod +x start.sh`
-   - **Start Command:** `./start.sh`
+   - **Build Command:** `npm cache clean --force && npm ci --no-audit --no-fund --prefer-offline --timeout=300000`
+   - **Start Command:** `npm start`
 
 4. **Set Environment Variables:**
    ```
    NODE_ENV=production
    RENDER=true
-   SEND_DELAY_MS=1000
-   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
-   PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
-   NODE_OPTIONS=--max-old-space-size=256
+   SEND_DELAY_MS=600
+   JSONBIN_API_KEY=your_jsonbin_api_key
+   JSONBIN_BIN_ID=your_jsonbin_bin_id
+   JSONBIN_MASTER_KEY=your_jsonbin_master_key
    ```
 
 5. **Deploy** and wait for the build to complete
@@ -101,6 +103,12 @@ If npm install gets stuck:
 ### Memory Issues
 - Monitor memory usage: `https://your-app-name.onrender.com/`
 - Manual cleanup: `POST https://your-app-name.onrender.com/cleanup`
+- Check memory optimization guide: `MEMORY_OPTIMIZATION_GUIDE.md`
+
+### Session Disconnections
+- Verify JSONBin credentials are set
+- Check session status: `/session-status`
+- Monitor keep-alive logs for connection health
 
 ## 📦 Local Development
 
@@ -128,6 +136,10 @@ npm run dev
 | `SEND_DELAY_MS` | `600` | Message sending delay |
 | `SHOP_NAME` | `RS Tailors & Fabric` | Your shop name |
 | `SHOP_PHONE` | `8824781960` | Your shop phone |
+| `JSONBIN_API_KEY` | - | JSONBin API key for session storage |
+| `JSONBIN_BIN_ID` | - | JSONBin bin ID for session storage |
+| `JSONBIN_MASTER_KEY` | - | JSONBin master key for write access |
+| `SESSION_STORAGE_TYPE` | `jsonbin` | Session storage type (jsonbin/mongodb/file) |
 
 ## 📋 Message Templates
 
@@ -159,6 +171,17 @@ Adjust `SEND_DELAY_MS` to control message sending frequency.
 - **Status:** `/`
 - **Session Status:** `/session-status`
 - **Memory Cleanup:** `POST /cleanup`
+- **Memory Optimization Guide:** `MEMORY_OPTIMIZATION_GUIDE.md`
+
+## 🛡️ Memory Management
+
+The bot includes advanced memory management features:
+
+- **Memory Guardian**: Monitors memory usage and triggers cleanup
+- **Session Keep-Alive**: Prevents WhatsApp disconnections
+- **Automatic Garbage Collection**: Runs every 30 seconds
+- **Memory Thresholds**: Critical at 60MB, Emergency at 80MB
+- **Session Persistence**: External storage with JSONBin
 
 ## 🆘 Support
 

@@ -7,6 +7,7 @@ const qrcode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const ExternalSessionStorage = require('./session-storage');
+const SessionKeepAlive = require('./session-keepalive');
 
 class RenderWhatsAppClient {
     constructor() {
@@ -18,6 +19,7 @@ class RenderWhatsAppClient {
         this._maxRetries = 3;
         this._isRender = process.env.RENDER || process.env.NODE_ENV === 'production';
         this._sessionStorage = new ExternalSessionStorage();
+        this._keepAlive = null;
 
         // Ensure session directory exists
         try { 
@@ -56,7 +58,7 @@ class RenderWhatsAppClient {
                 '--no-default-browser-check',
                 '--no-first-run',
                 '--memory-pressure-off',
-                '--max_old_space_size=150',
+                '--max_old_space_size=100', // Reduced from 150MB
                 '--single-process',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
@@ -65,10 +67,40 @@ class RenderWhatsAppClient {
                 '--disable-databases',
                 '--disable-file-system',
                 '--disable-notifications',
-                '--disable-permissions-api'
+                '--disable-permissions-api',
+                '--disable-javascript-harmony-shipping',
+                '--disable-ipc-flooding-protection',
+                '--disable-renderer-accessibility',
+                '--disable-speech-api',
+                '--disable-web-bluetooth',
+                '--disable-webgl',
+                '--disable-webgl2',
+                '--disable-accelerated-2d-canvas',
+                '--disable-accelerated-jpeg-decoding',
+                '--disable-accelerated-mjpeg-decode',
+                '--disable-accelerated-video-decode',
+                '--disable-gpu-sandbox',
+                '--disable-software-rasterizer',
+                '--disable-threaded-compositing',
+                '--disable-threaded-scrolling',
+                '--disable-checker-imaging',
+                '--disable-new-content-rendering-timeout',
+                '--disable-threaded-animation',
+                '--disable-threaded-scrolling',
+                '--disable-in-process-stack-traces',
+                '--disable-histogram-customizer',
+                '--disable-gl-extensions',
+                '--disable-composited-antialiasing',
+                '--disable-canvas-aa',
+                '--disable-3d-apis',
+                '--disable-accelerated-video',
+                '--disable-gpu-compositing',
+                '--memory-pressure-off',
+                '--max_old_space_size=100',
+                '--js-flags=--max-old-space-size=100'
             ],
-            timeout: 60000, // Increased timeout for better stability
-            protocolTimeout: 60000,
+            timeout: 45000, // Reduced timeout for faster failure detection
+            protocolTimeout: 45000,
             // Let Puppeteer handle Chrome download automatically
             // Don't specify executablePath to allow auto-download
         };
@@ -79,16 +111,21 @@ class RenderWhatsAppClient {
                 dataPath: this._sessionDir
             }),
             puppeteer: puppeteerConfig,
-            qrMaxRetries: 5, // Increased retries
-            authTimeoutMs: 120000, // Increased timeout
+            qrMaxRetries: 3, // Reduced retries for faster failure
+            authTimeoutMs: 90000, // Reduced timeout
             restartOnAuthFail: false,
             takeoverOnConflict: false,
-            takeoverTimeoutMs: 60000, // Increased timeout
+            takeoverTimeoutMs: 45000, // Reduced timeout
             // Add session persistence options
             session: null,
             // Add connection stability options
             ffmpegPath: null,
-            bypassCSP: true
+            bypassCSP: true,
+            // Memory optimization options
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+            }
         });
     }
 
@@ -132,6 +169,12 @@ class RenderWhatsAppClient {
             } catch {}
             console.log('✅ WhatsApp client is ready.');
             
+            // Start session keep-alive
+            if (!this._keepAlive) {
+                this._keepAlive = new SessionKeepAlive(this);
+                console.log('💓 Session Keep-Alive: Started');
+            }
+            
             // Save session data to external storage with a delay
             setTimeout(async () => {
                 try {
@@ -155,6 +198,12 @@ class RenderWhatsAppClient {
         this._onDisconnected = (reason) => {
             this._ready = false;
             console.warn('⚠️ WhatsApp disconnected:', reason);
+            
+            // Stop keep-alive on disconnect
+            if (this._keepAlive) {
+                this._keepAlive.stopKeepAlive();
+                this._keepAlive = null;
+            }
             
             // Don't restart immediately for certain disconnect reasons
             if (reason === 'NAVIGATION' || reason === 'LOGOUT') {
@@ -244,6 +293,12 @@ class RenderWhatsAppClient {
         if (!this.isReady()) {
             throw new Error('WhatsApp client not ready');
         }
+        
+        // Update keep-alive activity
+        if (this._keepAlive) {
+            this._keepAlive.updateActivity();
+        }
+        
         return this.client.sendMessage(chatId, message);
     }
 
@@ -279,7 +334,6 @@ class RenderWhatsAppClient {
                         'Default/Preferences',
                         'Default/Local Storage/leveldb/CURRENT',
                         'Default/Local Storage/leveldb/MANIFEST-000001',
-                        'Default/Session Storage/000003.log',
                         'Local State'
                     ];
                     
@@ -288,12 +342,12 @@ class RenderWhatsAppClient {
                         if (fs.existsSync(fullPath)) {
                             try {
                                 const stat = fs.statSync(fullPath);
-                                // Only read files smaller than 1MB to prevent memory issues
-                                if (stat.isFile() && stat.size > 0 && stat.size < 1024 * 1024) {
+                                // Only read files smaller than 512KB to prevent memory issues
+                                if (stat.isFile() && stat.size > 0 && stat.size < 512 * 1024) {
                                     const fileData = fs.readFileSync(fullPath);
                                     sessionData[file] = fileData.toString('base64');
                                     console.log(`✅ Read session file: ${file} (${stat.size} bytes)`);
-                                } else if (stat.size >= 1024 * 1024) {
+                                } else if (stat.size >= 512 * 1024) {
                                     console.log(`⚠️ Skipping large file: ${file} (${stat.size} bytes)`);
                                 }
                             } catch (e) {
@@ -354,6 +408,12 @@ class RenderWhatsAppClient {
 
     async destroy() {
         try {
+            // Stop keep-alive first
+            if (this._keepAlive) {
+                this._keepAlive.stopKeepAlive();
+                this._keepAlive = null;
+            }
+            
             // Save session before destroying
             if (this._ready) {
                 await this._saveSessionToExternal();

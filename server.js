@@ -26,7 +26,7 @@ app.use((req, res, next) => {
 });
 
 // Limit request body to avoid memory spikes  
-app.use(express.json({ limit: "32kb" })); // Reduced from 64kb
+app.use(express.json({ limit: "16kb" })); // Further reduced for memory optimization
 
 const Bottleneck = require("bottleneck");
 // Initialize WhatsApp client
@@ -259,7 +259,7 @@ app.post("/webhook/order-ready", async (req, res) => {
 
     // If memory is already high, reject early to protect the instance
     const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-    if (heapMB > 200) {
+    if (heapMB > 60) { // Lowered threshold for free tier
       return res.status(503).json({
         success: false,
         error: "Server under memory pressure, try again shortly.",
