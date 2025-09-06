@@ -7,6 +7,7 @@ const qrcode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const ExternalSessionStorage = require('./session-storage');
+const MemoryGuardian = require('./memory-guardian');
 const SessionKeepAlive = require('./session-keepalive');
 
 class RenderWhatsAppClient {
@@ -37,7 +38,7 @@ class RenderWhatsAppClient {
 
     _createClient() {
         // Ultra-lightweight Puppeteer configuration for memory optimization
-        const puppeteerConfig = {
+    const puppeteerConfig = {
             headless: 'new',
             // Don't use userDataDir with LocalAuth - they're incompatible
             args: [
@@ -46,7 +47,7 @@ class RenderWhatsAppClient {
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
                 '--disable-web-security',
-                '--disable-features=VizDisplayCompositor',
+        '--disable-features=VizDisplayCompositor,TranslateUI',
                 '--disable-extensions',
                 '--disable-plugins',
                 '--disable-images',
@@ -58,7 +59,7 @@ class RenderWhatsAppClient {
                 '--no-default-browser-check',
                 '--no-first-run',
                 '--memory-pressure-off',
-                '--max_old_space_size=150', // Increased for startup stability
+        '--max_old_space_size=150',
                 '--single-process',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
@@ -86,7 +87,6 @@ class RenderWhatsAppClient {
                 '--disable-checker-imaging',
                 '--disable-new-content-rendering-timeout',
                 '--disable-threaded-animation',
-                '--disable-threaded-scrolling',
                 '--disable-in-process-stack-traces',
                 '--disable-histogram-customizer',
                 '--disable-gl-extensions',
@@ -96,7 +96,6 @@ class RenderWhatsAppClient {
                 '--disable-accelerated-video',
                 '--disable-gpu-compositing',
                 '--memory-pressure-off',
-                '--max_old_space_size=150',
                 '--js-flags=--max-old-space-size=150',
                 '--disable-hang-monitor',
                 '--disable-prompt-on-repost',
@@ -105,13 +104,10 @@ class RenderWhatsAppClient {
                 '--disable-background-mode',
                 '--disable-client-side-phishing-detection',
                 '--disable-sync-preferences',
-                '--disable-default-apps',
-                '--disable-web-resources',
-                '--disable-features=TranslateUI',
-                '--disable-ipc-flooding-protection'
+        '--disable-web-resources'
             ],
-            timeout: 90000, // Increased timeout for stability
-            protocolTimeout: 90000,
+        timeout: 180000,
+        protocolTimeout: 180000,
             // Let Puppeteer handle Chrome download automatically
             // Don't specify executablePath to allow auto-download
         };
@@ -122,8 +118,8 @@ class RenderWhatsAppClient {
                 dataPath: this._sessionDir
             }),
             puppeteer: puppeteerConfig,
-            qrMaxRetries: 5, // Increased retries for better success
-            authTimeoutMs: 120000, // Increased timeout for stability
+            qrMaxRetries: 5,
+            authTimeoutMs: 180000,
             restartOnAuthFail: false,
             takeoverOnConflict: false,
             takeoverTimeoutMs: 60000, // Increased timeout
@@ -282,7 +278,13 @@ class RenderWhatsAppClient {
             
             // Initialize with timeout and retry logic
             console.log('🔄 Starting WhatsApp client initialization...');
-            await this._initializeWithRetry();
+            // Suspend memory guardian during critical init to avoid GC interference
+            MemoryGuardian.suspend('whatsapp-init');
+            try {
+                await this._initializeWithRetry();
+            } finally {
+                MemoryGuardian.resume('whatsapp-init');
+            }
             
         } catch (err) {
             console.error('❌ Failed to initialize WhatsApp client:', err.message);
@@ -291,8 +293,8 @@ class RenderWhatsAppClient {
     }
 
     async _initializeWithRetry() {
-        const maxRetries = 3;
-        const retryDelay = 10000; // 10 seconds
+    const maxRetries = 3;
+    const retryDelay = 10000; // 10 seconds
         
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -304,7 +306,7 @@ class RenderWhatsAppClient {
                 // Set a timeout for the initialization
                 const initPromise = this.client.initialize();
                 const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Initialization timeout')), 150000); // Increased to 2.5 minutes
+                    setTimeout(() => reject(new Error('Initialization timeout')), 180000);
                 });
                 
                 await Promise.race([initPromise, timeoutPromise]);

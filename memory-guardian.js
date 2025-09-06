@@ -5,6 +5,23 @@ const fs = require('fs');
 const path = require('path');
 
 class MemoryGuardian {
+    // Global suspension controls to pause GC/cleanup during critical phases (e.g., WhatsApp init)
+    static _suspensions = new Set();
+    static suspend(tag = 'default') {
+        try {
+            MemoryGuardian._suspensions.add(tag);
+            console.log(`⏸️ Memory Guardian: suspended (${tag})`);
+        } catch {}
+    }
+    static resume(tag = 'default') {
+        try {
+            MemoryGuardian._suspensions.delete(tag);
+            console.log(`▶️ Memory Guardian: resumed (${tag})`);
+        } catch {}
+    }
+    static isSuspended() {
+        return MemoryGuardian._suspensions.size > 0;
+    }
     constructor() {
         this.checkInterval = 10000; // Check every 10 seconds for startup stability
         this.criticalMemoryMB = 100;  // Critical at 100MB (increased for startup)
@@ -68,6 +85,23 @@ class MemoryGuardian {
             // Check if we're in startup grace period
             const now = Date.now();
             const isInStartupGrace = (now - this.startupTime) < this.startupGracePeriod;
+            const isSuspended = MemoryGuardian.isSuspended();
+
+            // When suspended (e.g., during WhatsApp init), skip GC/cleanup entirely
+            if (isSuspended) {
+                // Only act on extreme emergencies to avoid Render OOM kills
+                const emergencyDuringSuspendMB = 350; // much higher threshold while suspended
+                if (rssMemoryMB > emergencyDuringSuspendMB) {
+                    console.log(`🚨 EMERGENCY MEMORY (Suspended): ${rssMemoryMB}MB! Immediate restart!`);
+                    this.emergencyRestart();
+                    return;
+                }
+                // Light heartbeat log once a minute while suspended
+                if (this.checkCount % 6 === 0) {
+                    console.log('⏱️ Memory Guardian suspended; skipping GC/cleanup during critical phase');
+                }
+                return;
+            }
             
             if (isInStartupGrace) {
                 // During startup, use higher thresholds
