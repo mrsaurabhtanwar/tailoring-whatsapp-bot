@@ -4,7 +4,7 @@
   "description": "Lightweight WhatsApp automation for tailoring shop - Render optimized",
   "main": "server.js",
   "scripts": {
-    "start": "node --max-old-space-size=200 --gc-interval=100 server.js",
+    "start": "node --max-old-space-size=200 --expose-gc server.js",
     "dev": "node server.js",
     "build": "echo 'No build step required'",
     "preinstall": "npm config set fetch-retry-mintimeout 20000 && npm config set fetch-retry-maxtimeout 120000 && npm config set fetch-timeout 300000",

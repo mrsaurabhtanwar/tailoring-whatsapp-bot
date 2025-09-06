@@ -16,7 +16,7 @@ if [ "$RENDER" = "true" ]; then
 fi
 
 # Set memory limits with garbage collection
-export NODE_OPTIONS="--max-old-space-size=200 --gc-interval=100 --expose-gc"
+export NODE_OPTIONS="--max-old-space-size=200 --expose-gc"
 
 # Start the application
 echo "🌟 Starting Node.js application..."

@@ -312,7 +312,7 @@ setInterval(() => {
   console.log(`💾 Server Memory: ${memUsageMB}MB`);
 
   // Force garbage collection if memory usage is high
-  if (memUsageMB > 150) {
+  if (memUsageMB > 120) {
     console.log('⚠️ High memory usage detected! Forcing garbage collection...');
     if (global.gc) {
       global.gc();
@@ -322,13 +322,20 @@ setInterval(() => {
   }
 
   // If memory is critically high, restart WhatsApp client
-  if (memUsageMB > 180) {
+  if (memUsageMB > 160) {
     console.log('🚨 Critical memory usage! Restarting WhatsApp client...');
     if (whatsappClient && typeof whatsappClient.restartClient === "function") {
       whatsappClient.restartClient().catch(console.error);
     }
   }
-}, 30000); // Check every 30 seconds
+}, 20000); // Check every 20 seconds
+
+// Additional frequent garbage collection for memory pressure
+setInterval(() => {
+  if (global.gc) {
+    global.gc();
+  }
+}, 10000); // Force GC every 10 seconds
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
