@@ -320,9 +320,38 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
+// Memory monitoring
+setInterval(() => {
+  const memUsage = process.memoryUsage();
+  const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+  console.log(`💾 Server Memory: ${memUsageMB}MB`);
+
+  // If memory usage is too high, log warning
+  if (memUsageMB > 450) {
+    console.log("⚠️ High memory usage detected!");
+  }
+}, 60000); // Check every minute
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down gracefully...");
+  if (whatsappClient && typeof whatsappClient.destroy === "function") {
+    whatsappClient.destroy();
+  }
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  console.log("🛑 SIGINT received, shutting down gracefully...");
+  if (whatsappClient && typeof whatsappClient.destroy === "function") {
+    whatsappClient.destroy();
+  }
+  process.exit(0);
+});
+
+// Start server - bind to 0.0.0.0 for deployment environment
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Server running on 0.0.0.0:${port}`);
   console.log(
     `📱 WhatsApp Bot Status: ${whatsappClient.isReady() ? "Ready" : "Not Ready"}`,
   );
