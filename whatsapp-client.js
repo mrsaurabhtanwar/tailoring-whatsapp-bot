@@ -74,10 +74,15 @@ class RenderWhatsAppClient {
             }),
             puppeteer: puppeteerConfig,
             qrMaxRetries: 3,
-            authTimeoutMs: 60000,
-            restartOnAuthFail: true,
-            takeoverOnConflict: true,
-            takeoverTimeoutMs: 0
+            authTimeoutMs: 90000,
+            restartOnAuthFail: false,
+            takeoverOnConflict: false,
+            takeoverTimeoutMs: 30000,
+            // Add session persistence options
+            session: null,
+            // Add connection stability options
+            ffmpegPath: null,
+            bypassCSP: true
         });
     }
 
@@ -121,12 +126,14 @@ class RenderWhatsAppClient {
             } catch {}
             console.log('✅ WhatsApp client is ready.');
             
-            // Save session data to external storage
-            try {
-                await this._saveSessionToExternal();
-            } catch (error) {
-                console.log('⚠️ Failed to save session to external storage:', error.message);
-            }
+            // Save session data to external storage with a delay
+            setTimeout(async () => {
+                try {
+                    await this._saveSessionToExternal();
+                } catch (error) {
+                    console.log('⚠️ Failed to save session to external storage:', error.message);
+                }
+            }, 5000); // Wait 5 seconds for session to stabilize
         };
 
         this._onAuthenticated = () => {
@@ -142,7 +149,19 @@ class RenderWhatsAppClient {
         this._onDisconnected = (reason) => {
             this._ready = false;
             console.warn('⚠️ WhatsApp disconnected:', reason);
-            this._handleFailure();
+            
+            // Don't restart immediately for certain disconnect reasons
+            if (reason === 'NAVIGATION' || reason === 'LOGOUT') {
+                console.log('🔄 WhatsApp logout detected, will require re-authentication');
+                return;
+            }
+            
+            // Add delay before handling failure to prevent rapid restarts
+            setTimeout(() => {
+                if (!this._ready) {
+                    this._handleFailure();
+                }
+            }, 5000); // Wait 5 seconds before attempting restart
         };
 
         this.client.on('qr', this._onQr);
@@ -238,6 +257,9 @@ class RenderWhatsAppClient {
     async _saveSessionToExternal() {
         try {
             console.log('💾 Preparing to save session to external storage...');
+            // Give the session files time to be written
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
             // Read session files and save to external storage
             const sessionData = {};
             
@@ -245,20 +267,36 @@ class RenderWhatsAppClient {
                 const sessionPath = path.join(this._sessionDir, 'session-tailoring-shop-bot');
                 if (fs.existsSync(sessionPath)) {
                     console.log('📁 Reading session files from:', sessionPath);
-                    // Read key session files
-                    const keyFiles = ['Local State', 'Preferences', 'Default/Login Data'];
-                    for (const file of keyFiles) {
-                        const filePath = path.join(sessionPath, file);
-                        if (fs.existsSync(filePath)) {
+                    
+                    // Read all files recursively, not just specific ones
+                    const readSessionFiles = (dir, baseDir = '') => {
+                        const files = fs.readdirSync(dir);
+                        for (const file of files) {
+                            const fullPath = path.join(dir, file);
+                            const relativePath = path.join(baseDir, file);
+                            
                             try {
-                                sessionData[file] = fs.readFileSync(filePath);
-                                console.log(`✅ Read session file: ${file}`);
+                                const stat = fs.statSync(fullPath);
+                                if (stat.isDirectory()) {
+                                    readSessionFiles(fullPath, relativePath);
+                                } else if (stat.isFile() && stat.size > 0) {
+                                    // Convert to base64 for safe storage
+                                    const fileData = fs.readFileSync(fullPath);
+                                    sessionData[relativePath] = fileData.toString('base64');
+                                    console.log(`✅ Read session file: ${relativePath} (${stat.size} bytes)`);
+                                }
                             } catch (e) {
-                                console.log(`⚠️ Could not read session file: ${file}`);
+                                console.log(`⚠️ Could not read session file: ${relativePath} - ${e.message}`);
                             }
                         }
-                    }
+                    };
+                    
+                    readSessionFiles(sessionPath);
+                } else {
+                    console.log('⚠️ Session directory not found:', sessionPath);
                 }
+            } else {
+                console.log('⚠️ Base session directory not found:', this._sessionDir);
             }
             
             if (Object.keys(sessionData).length > 0) {
@@ -266,7 +304,7 @@ class RenderWhatsAppClient {
                 await this._sessionStorage.saveSession(sessionData);
                 console.log('✅ Session saved to external storage successfully');
             } else {
-                console.log('⚠️ No session data found to save');
+                console.log('⚠️ No session data found to save - session may not be fully initialized yet');
             }
         } catch (error) {
             console.log('⚠️ Failed to save session data:', error.message);
@@ -281,11 +319,19 @@ class RenderWhatsAppClient {
                 const sessionPath = path.join(this._sessionDir, 'session-tailoring-shop-bot');
                 fs.mkdirSync(sessionPath, { recursive: true });
                 
-                for (const [fileName, fileData] of Object.entries(sessionData)) {
-                    const filePath = path.join(sessionPath, fileName);
-                    const dir = path.dirname(filePath);
-                    fs.mkdirSync(dir, { recursive: true });
-                    fs.writeFileSync(filePath, fileData);
+                for (const [relativePath, base64Data] of Object.entries(sessionData)) {
+                    try {
+                        const filePath = path.join(sessionPath, relativePath);
+                        const dir = path.dirname(filePath);
+                        fs.mkdirSync(dir, { recursive: true });
+                        
+                        // Convert from base64 back to binary
+                        const fileData = Buffer.from(base64Data, 'base64');
+                        fs.writeFileSync(filePath, fileData);
+                        console.log(`✅ Restored session file: ${relativePath}`);
+                    } catch (e) {
+                        console.log(`⚠️ Failed to restore session file: ${relativePath} - ${e.message}`);
+                    }
                 }
                 
                 console.log('✅ Session restored from external storage');

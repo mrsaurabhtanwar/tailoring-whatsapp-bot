@@ -100,22 +100,26 @@ class ExternalSessionStorage {
             throw new Error('JSONBin API key and Bin ID required');
         }
 
+        console.log(`🔑 Using JSONBin API Key: ${this.jsonbinApiKey.substring(0, 10)}...`);
+        console.log(`📦 Using JSONBin Bin ID: ${this.jsonbinBinId}`);
+
         const response = await axios.put(
             `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}`,
             {
                 sessionData: sessionData,
                 timestamp: new Date().toISOString(),
-                version: '1.0'
+                version: '2.0'
             },
             {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Master-Key': this.jsonbinApiKey
-                }
+                },
+                timeout: 30000
             }
         );
 
-        console.log('✅ Session saved to JSONBin');
+        console.log('✅ Session saved to JSONBin successfully');
         return response.data;
     }
 
@@ -124,16 +128,20 @@ class ExternalSessionStorage {
             throw new Error('JSONBin API key and Bin ID required');
         }
 
+        console.log(`🔑 Using JSONBin API Key: ${this.jsonbinApiKey.substring(0, 10)}...`);
+        console.log(`📦 Using JSONBin Bin ID: ${this.jsonbinBinId}`);
+
         const response = await axios.get(
             `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}/latest`,
             {
                 headers: {
                     'X-Master-Key': this.jsonbinApiKey
-                }
+                },
+                timeout: 30000
             }
         );
 
-        console.log('✅ Session loaded from JSONBin');
+        console.log('✅ Session loaded from JSONBin successfully');
         return response.data.record.sessionData;
     }
 
