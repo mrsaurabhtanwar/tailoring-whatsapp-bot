@@ -34,7 +34,7 @@ class RenderWhatsAppClient {
     }
 
     _createClient() {
-        // Render-optimized Puppeteer configuration
+        // Render-optimized Puppeteer configuration with puppeteer-core
         const puppeteerConfig = {
             headless: 'new',
             args: [
@@ -60,7 +60,8 @@ class RenderWhatsAppClient {
                 '--single-process'
             ],
             timeout: 0,
-            protocolTimeout: 0
+            protocolTimeout: 0,
+            // Let puppeteer handle Chrome installation automatically
         };
 
         this.client = new Client({
