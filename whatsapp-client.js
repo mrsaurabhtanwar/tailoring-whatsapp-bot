@@ -34,7 +34,7 @@ class RenderWhatsAppClient {
     }
 
     _createClient() {
-        // Render-optimized Puppeteer configuration
+        // Ultra-lightweight Puppeteer configuration for memory optimization
         const puppeteerConfig = {
             headless: 'new',
             args: [
@@ -55,11 +55,16 @@ class RenderWhatsAppClient {
                 '--no-default-browser-check',
                 '--no-first-run',
                 '--memory-pressure-off',
-                '--max_old_space_size=256',
+                '--max_old_space_size=150',
                 '--single-process',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding'
+                '--disable-renderer-backgrounding',
+                '--disable-background-networking',
+                '--disable-databases',
+                '--disable-file-system',
+                '--disable-notifications',
+                '--disable-permissions-api'
             ],
             timeout: 0,
             protocolTimeout: 0,
@@ -268,30 +273,33 @@ class RenderWhatsAppClient {
                 if (fs.existsSync(sessionPath)) {
                     console.log('📁 Reading session files from:', sessionPath);
                     
-                    // Read all files recursively, not just specific ones
-                    const readSessionFiles = (dir, baseDir = '') => {
-                        const files = fs.readdirSync(dir);
-                        for (const file of files) {
-                            const fullPath = path.join(dir, file);
-                            const relativePath = path.join(baseDir, file);
-                            
+                    // Only read essential session files to minimize memory usage
+                    const essentialFiles = [
+                        'Default/Preferences',
+                        'Default/Local Storage/leveldb/CURRENT',
+                        'Default/Local Storage/leveldb/MANIFEST-000001',
+                        'Default/Session Storage/000003.log',
+                        'Local State'
+                    ];
+                    
+                    for (const file of essentialFiles) {
+                        const fullPath = path.join(sessionPath, file);
+                        if (fs.existsSync(fullPath)) {
                             try {
                                 const stat = fs.statSync(fullPath);
-                                if (stat.isDirectory()) {
-                                    readSessionFiles(fullPath, relativePath);
-                                } else if (stat.isFile() && stat.size > 0) {
-                                    // Convert to base64 for safe storage
+                                // Only read files smaller than 1MB to prevent memory issues
+                                if (stat.isFile() && stat.size > 0 && stat.size < 1024 * 1024) {
                                     const fileData = fs.readFileSync(fullPath);
-                                    sessionData[relativePath] = fileData.toString('base64');
-                                    console.log(`✅ Read session file: ${relativePath} (${stat.size} bytes)`);
+                                    sessionData[file] = fileData.toString('base64');
+                                    console.log(`✅ Read session file: ${file} (${stat.size} bytes)`);
+                                } else if (stat.size >= 1024 * 1024) {
+                                    console.log(`⚠️ Skipping large file: ${file} (${stat.size} bytes)`);
                                 }
                             } catch (e) {
-                                console.log(`⚠️ Could not read session file: ${relativePath} - ${e.message}`);
+                                console.log(`⚠️ Could not read session file: ${file} - ${e.message}`);
                             }
                         }
-                    };
-                    
-                    readSessionFiles(sessionPath);
+                    }
                 } else {
                     console.log('⚠️ Session directory not found:', sessionPath);
                 }

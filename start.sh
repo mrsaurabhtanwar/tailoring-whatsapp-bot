@@ -15,8 +15,8 @@ if [ "$RENDER" = "true" ]; then
     echo "📁 Session directories created"
 fi
 
-# Set memory limits
-export NODE_OPTIONS="--max-old-space-size=256"
+# Set memory limits with garbage collection
+export NODE_OPTIONS="--max-old-space-size=200 --gc-interval=100 --expose-gc"
 
 # Start the application
 echo "🌟 Starting Node.js application..."

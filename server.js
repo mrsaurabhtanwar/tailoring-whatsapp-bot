@@ -305,17 +305,30 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Memory monitoring
+// Memory monitoring with automatic cleanup
 setInterval(() => {
   const memUsage = process.memoryUsage();
   const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
   console.log(`💾 Server Memory: ${memUsageMB}MB`);
 
-  // If memory usage is too high, log warning
-  if (memUsageMB > 200) {
-    console.log("⚠️ High memory usage detected!");
+  // Force garbage collection if memory usage is high
+  if (memUsageMB > 150) {
+    console.log('⚠️ High memory usage detected! Forcing garbage collection...');
+    if (global.gc) {
+      global.gc();
+      const newMemUsage = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+      console.log(`🧹 Memory after cleanup: ${newMemUsage}MB`);
+    }
   }
-}, 60000); // Check every minute
+
+  // If memory is critically high, restart WhatsApp client
+  if (memUsageMB > 180) {
+    console.log('🚨 Critical memory usage! Restarting WhatsApp client...');
+    if (whatsappClient && typeof whatsappClient.restartClient === "function") {
+      whatsappClient.restartClient().catch(console.error);
+    }
+  }
+}, 30000); // Check every 30 seconds
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
