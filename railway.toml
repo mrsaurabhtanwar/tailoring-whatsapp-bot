@@ -1,0 +1,21 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[env]
+NODE_ENV = "production"
+PORT = "8080"
+RAILWAY = "true"
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "false"
+
+# Memory optimization
+NODE_OPTIONS = "--max-old-space-size=512 --expose-gc --optimize-for-size"
+
+# Bot configuration
+SEND_DELAY_MS = "1000"
+SHOP_NAME = "RS Tailors & Fabric"
+SHOP_PHONE = "8824781960"

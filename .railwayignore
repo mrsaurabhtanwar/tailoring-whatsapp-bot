@@ -1,0 +1,45 @@
+# Railway ignore file
+# Exclude from deployment
+
+# Environment files
+.env.local
+.env.development
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+temp/
+tmp/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Cache directories
+.npm/
+.cache/
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Documentation (already in README)
+docs/
+
+# Local session data
+.wwebjs_auth/
+sessions/
+current-qr.png
+
+# Package lock for smaller builds
+package-lock.json

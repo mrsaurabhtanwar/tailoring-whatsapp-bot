@@ -1,5 +1,5 @@
-// Lightweight WhatsApp client optimized for Render deployment
-// Features: Session persistence, memory optimization, and Render compatibility
+// Lightweight WhatsApp client optimized for Railway deployment
+// Features: Session persistence, memory optimization, and Railway compatibility
 
 const fs = require('fs');
 const path = require('path');
@@ -18,7 +18,7 @@ class RenderWhatsAppClient {
         this._sessionDir = path.join(__dirname, '.wwebjs_auth');
         this._retryCount = 0;
         this._maxRetries = 3;
-        this._isRender = process.env.RENDER || process.env.NODE_ENV === 'production';
+        this._isCloudPlatform = process.env.RAILWAY || process.env.RENDER || process.env.NODE_ENV === 'production';
         this._sessionStorage = new ExternalSessionStorage();
         this._keepAlive = null;
 
@@ -29,7 +29,7 @@ class RenderWhatsAppClient {
             console.log('Session directory already exists or creation failed');
         }
 
-        console.log(`🌐 Environment: ${this._isRender ? 'Render' : 'Local'}`);
+        console.log(`🌐 Environment: ${this._isCloudPlatform ? (process.env.RAILWAY ? 'Railway' : 'Cloud') : 'Local'}`);
         
         this._createClient();
         this._wireEvents();
@@ -267,7 +267,7 @@ class RenderWhatsAppClient {
             await new Promise(resolve => setTimeout(resolve, 8000)); // 8 second delay
             
             // Try to restore session from external storage first
-            if (this._isRender) {
+            if (this._isCloudPlatform) {
                 console.log('🔄 Attempting to restore session from external storage...');
                 const restored = await this._loadSessionFromExternal();
                 if (restored) {

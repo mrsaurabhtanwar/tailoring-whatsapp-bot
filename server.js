@@ -18,7 +18,7 @@ const app = express();
 // Initialize Memory Guardian FIRST
 const memoryGuardian = new MemoryGuardian();
 
-// Set timeouts for better Render compatibility
+// Set timeouts for better Railway compatibility
 app.use((req, res, next) => {
   req.setTimeout(30000); // 30 seconds
   res.setTimeout(30000);
@@ -26,12 +26,12 @@ app.use((req, res, next) => {
 });
 
 // Limit request body to avoid memory spikes  
-app.use(express.json({ limit: "16kb" })); // Further reduced for memory optimization
+app.use(express.json({ limit: "16kb" })); // Optimized for Railway
 
 const Bottleneck = require("bottleneck");
 // Initialize WhatsApp client
 const whatsappClient = new RenderWhatsAppClient();
-const port = parseInt(process.env.PORT || "5000", 10);
+const port = parseInt(process.env.PORT || "8080", 10); // Railway default port
 const sendDelay = parseInt(process.env.SEND_DELAY_MS || "600", 10);
 // Bottleneck limiter to throttle sends
 const limiter = new Bottleneck({ minTime: sendDelay, maxConcurrent: 1 });
@@ -121,7 +121,7 @@ app.get("/session-status", (req, res) => {
       qrCodeRequired: !whatsappClient.isReady() && !fs.existsSync("current-qr.png"),
       sessionInfo: sessionInfo,
       lastCheck: new Date().toISOString(),
-      environment: process.env.RENDER ? "Render" : "Local",
+      environment: process.env.RAILWAY ? "Railway" : (process.env.RENDER ? "Render" : "Local"),
       sessionPath: authPath,
       sessionPathExists: fs.existsSync(authPath)
     };
@@ -270,7 +270,7 @@ app.post("/webhook/order-ready", async (req, res) => {
 
     // If memory is already high, reject early to protect the instance
     const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-    if (heapMB > 120) { // Increased threshold to allow for startup
+    if (heapMB > 90) { // Reduced threshold for Railway's memory limits
       return res.status(503).json({
         success: false,
         error: "Server under memory pressure, try again shortly.",
