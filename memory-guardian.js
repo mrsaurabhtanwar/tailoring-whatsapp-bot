@@ -116,14 +116,14 @@ class MemoryGuardian {
                 }
             }
 
-            // Periodic garbage collection
-            if (now - this.lastGCTime > this.gcInterval) {
+            // Periodic garbage collection (skip during startup grace period)
+            if (!isInStartupGrace && now - this.lastGCTime > this.gcInterval) {
                 this.forceGarbageCollection();
                 this.lastGCTime = now;
             }
 
-            // Periodic cleanup
-            if (now - this.lastCleanup > this.cleanupInterval) {
+            // Periodic cleanup (skip during startup grace period)  
+            if (!isInStartupGrace && now - this.lastCleanup > this.cleanupInterval) {
                 this.performCleanup();
                 this.lastCleanup = now;
             }

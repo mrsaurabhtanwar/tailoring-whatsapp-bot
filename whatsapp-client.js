@@ -110,8 +110,8 @@ class RenderWhatsAppClient {
                 '--disable-features=TranslateUI',
                 '--disable-ipc-flooding-protection'
             ],
-            timeout: 60000, // Increased timeout for stability
-            protocolTimeout: 60000,
+            timeout: 90000, // Increased timeout for stability
+            protocolTimeout: 90000,
             // Let Puppeteer handle Chrome download automatically
             // Don't specify executablePath to allow auto-download
         };
@@ -298,10 +298,13 @@ class RenderWhatsAppClient {
             try {
                 console.log(`🔄 Initialization attempt ${attempt}/${maxRetries}...`);
                 
+                // Add debugging for initialization stages
+                console.log('🌐 Creating Chrome browser instance...');
+                
                 // Set a timeout for the initialization
                 const initPromise = this.client.initialize();
                 const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Initialization timeout')), 120000); // 2 minutes
+                    setTimeout(() => reject(new Error('Initialization timeout')), 150000); // Increased to 2.5 minutes
                 });
                 
                 await Promise.race([initPromise, timeoutPromise]);
