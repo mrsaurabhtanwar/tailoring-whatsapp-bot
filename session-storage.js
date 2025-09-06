@@ -103,24 +103,58 @@ class ExternalSessionStorage {
         console.log(`🔑 Using JSONBin API Key: ${this.jsonbinApiKey.substring(0, 10)}...`);
         console.log(`📦 Using JSONBin Bin ID: ${this.jsonbinBinId}`);
 
-        const response = await axios.put(
-            `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}`,
-            {
-                sessionData: sessionData,
-                timestamp: new Date().toISOString(),
-                version: '2.0'
-            },
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Master-Key': this.jsonbinApiKey
-                },
-                timeout: 30000
-            }
-        );
+        // Try X-Master-Key first, fallback to X-Access-Key
+        const headers = {
+            'Content-Type': 'application/json'
+        };
 
-        console.log('✅ Session saved to JSONBin successfully');
-        return response.data;
+        // First try with X-Master-Key
+        headers['X-Master-Key'] = this.jsonbinApiKey;
+
+        try {
+            const response = await axios.put(
+                `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}`,
+                {
+                    sessionData: sessionData,
+                    timestamp: new Date().toISOString(),
+                    version: '2.0'
+                },
+                {
+                    headers: headers,
+                    timeout: 30000
+                }
+            );
+
+            console.log('✅ Session saved to JSONBin successfully');
+            return response.data;
+        } catch (error) {
+            if (error.response && error.response.status === 401) {
+                console.log('⚠️ X-Master-Key failed, trying X-Access-Key...');
+                
+                // Try with X-Access-Key instead
+                const accessHeaders = {
+                    'Content-Type': 'application/json',
+                    'X-Access-Key': this.jsonbinApiKey
+                };
+
+                const retryResponse = await axios.put(
+                    `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}`,
+                    {
+                        sessionData: sessionData,
+                        timestamp: new Date().toISOString(),
+                        version: '2.0'
+                    },
+                    {
+                        headers: accessHeaders,
+                        timeout: 30000
+                    }
+                );
+
+                console.log('✅ Session saved to JSONBin with X-Access-Key');
+                return retryResponse.data;
+            }
+            throw error;
+        }
     }
 
     async _loadFromJsonBin() {
@@ -131,18 +165,39 @@ class ExternalSessionStorage {
         console.log(`🔑 Using JSONBin API Key: ${this.jsonbinApiKey.substring(0, 10)}...`);
         console.log(`📦 Using JSONBin Bin ID: ${this.jsonbinBinId}`);
 
-        const response = await axios.get(
-            `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}/latest`,
-            {
-                headers: {
-                    'X-Master-Key': this.jsonbinApiKey
-                },
-                timeout: 30000
-            }
-        );
+        // Try X-Master-Key first, fallback to X-Access-Key
+        try {
+            const response = await axios.get(
+                `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}/latest`,
+                {
+                    headers: {
+                        'X-Master-Key': this.jsonbinApiKey
+                    },
+                    timeout: 30000
+                }
+            );
 
-        console.log('✅ Session loaded from JSONBin successfully');
-        return response.data.record.sessionData;
+            console.log('✅ Session loaded from JSONBin successfully');
+            return response.data.record.sessionData;
+        } catch (error) {
+            if (error.response && error.response.status === 401) {
+                console.log('⚠️ X-Master-Key failed, trying X-Access-Key...');
+                
+                const retryResponse = await axios.get(
+                    `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}/latest`,
+                    {
+                        headers: {
+                            'X-Access-Key': this.jsonbinApiKey
+                        },
+                        timeout: 30000
+                    }
+                );
+
+                console.log('✅ Session loaded from JSONBin with X-Access-Key');
+                return retryResponse.data.record.sessionData;
+            }
+            throw error;
+        }
     }
 
     async _saveToMongoDB(sessionData) {
