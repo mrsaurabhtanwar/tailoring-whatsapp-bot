@@ -9,6 +9,7 @@ class ExternalSessionStorage {
     constructor() {
         this.storageType = process.env.SESSION_STORAGE_TYPE || 'file';
         this.jsonbinApiKey = process.env.JSONBIN_API_KEY;
+        this.jsonbinMasterKey = process.env.JSONBIN_MASTER_KEY;
         this.jsonbinBinId = process.env.JSONBIN_BIN_ID;
         this.mongoUri = process.env.MONGODB_URI;
         this.localPath = path.join(__dirname, '.wwebjs_auth');
@@ -100,44 +101,28 @@ class ExternalSessionStorage {
             throw new Error('JSONBin API key and Bin ID required');
         }
 
-        console.log(`🔑 Using JSONBin API Key: ${this.jsonbinApiKey.substring(0, 10)}...`);
+        // Determine which keys to try (Master Key first if available, then Access Key)
+        const keys = [];
+        if (this.jsonbinMasterKey) {
+            keys.push({ type: 'X-Master-Key', key: this.jsonbinMasterKey });
+        }
+        keys.push({ type: 'X-Access-Key', key: this.jsonbinApiKey });
+
         console.log(`📦 Using JSONBin Bin ID: ${this.jsonbinBinId}`);
+        console.log(`🔑 Will try ${keys.length} authentication method(s)`);
 
-        // Try X-Master-Key first, fallback to X-Access-Key
-        const headers = {
-            'Content-Type': 'application/json'
-        };
+        // Try each key in order
+        for (let i = 0; i < keys.length; i++) {
+            const { type, key } = keys[i];
+            console.log(`🔑 Trying ${type}: ${key.substring(0, 10)}...`);
 
-        // First try with X-Master-Key
-        headers['X-Master-Key'] = this.jsonbinApiKey;
+            const headers = {
+                'Content-Type': 'application/json',
+                [type]: key
+            };
 
-        try {
-            const response = await axios.put(
-                `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}`,
-                {
-                    sessionData: sessionData,
-                    timestamp: new Date().toISOString(),
-                    version: '2.0'
-                },
-                {
-                    headers: headers,
-                    timeout: 30000
-                }
-            );
-
-            console.log('✅ Session saved to JSONBin successfully');
-            return response.data;
-        } catch (error) {
-            if (error.response && error.response.status === 401) {
-                console.log('⚠️ X-Master-Key failed, trying X-Access-Key...');
-                
-                // Try with X-Access-Key instead
-                const accessHeaders = {
-                    'Content-Type': 'application/json',
-                    'X-Access-Key': this.jsonbinApiKey
-                };
-
-                const retryResponse = await axios.put(
+            try {
+                const response = await axios.put(
                     `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}`,
                     {
                         sessionData: sessionData,
@@ -145,15 +130,26 @@ class ExternalSessionStorage {
                         version: '2.0'
                     },
                     {
-                        headers: accessHeaders,
+                        headers: headers,
                         timeout: 30000
                     }
                 );
 
-                console.log('✅ Session saved to JSONBin with X-Access-Key');
-                return retryResponse.data;
+                console.log(`✅ Session saved to JSONBin with ${type}`);
+                return response.data;
+            } catch (error) {
+                if (error.response && error.response.status === 401) {
+                    console.log(`❌ ${type} failed (401 Unauthorized)`);
+                    if (i < keys.length - 1) {
+                        console.log('⚠️ Trying next authentication method...');
+                        continue; // Try next key
+                    }
+                }
+                // If it's the last key or not a 401 error, throw
+                if (i === keys.length - 1) {
+                    throw error;
+                }
             }
-            throw error;
         }
     }
 
@@ -162,41 +158,47 @@ class ExternalSessionStorage {
             throw new Error('JSONBin API key and Bin ID required');
         }
 
-        console.log(`🔑 Using JSONBin API Key: ${this.jsonbinApiKey.substring(0, 10)}...`);
+        // Determine which keys to try (Master Key first if available, then Access Key)
+        const keys = [];
+        if (this.jsonbinMasterKey) {
+            keys.push({ type: 'X-Master-Key', key: this.jsonbinMasterKey });
+        }
+        keys.push({ type: 'X-Access-Key', key: this.jsonbinApiKey });
+
         console.log(`📦 Using JSONBin Bin ID: ${this.jsonbinBinId}`);
+        console.log(`🔑 Will try ${keys.length} authentication method(s) for loading`);
 
-        // Try X-Master-Key first, fallback to X-Access-Key
-        try {
-            const response = await axios.get(
-                `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}/latest`,
-                {
-                    headers: {
-                        'X-Master-Key': this.jsonbinApiKey
-                    },
-                    timeout: 30000
-                }
-            );
+        // Try each key in order
+        for (let i = 0; i < keys.length; i++) {
+            const { type, key } = keys[i];
+            console.log(`🔑 Trying ${type}: ${key.substring(0, 10)}...`);
 
-            console.log('✅ Session loaded from JSONBin successfully');
-            return response.data.record.sessionData;
-        } catch (error) {
-            if (error.response && error.response.status === 401) {
-                console.log('⚠️ X-Master-Key failed, trying X-Access-Key...');
-                
-                const retryResponse = await axios.get(
+            try {
+                const response = await axios.get(
                     `https://api.jsonbin.io/v3/b/${this.jsonbinBinId}/latest`,
                     {
                         headers: {
-                            'X-Access-Key': this.jsonbinApiKey
+                            [type]: key
                         },
                         timeout: 30000
                     }
                 );
 
-                console.log('✅ Session loaded from JSONBin with X-Access-Key');
-                return retryResponse.data.record.sessionData;
+                console.log(`✅ Session loaded from JSONBin with ${type}`);
+                return response.data.record.sessionData;
+            } catch (error) {
+                if (error.response && error.response.status === 401) {
+                    console.log(`❌ ${type} failed (401 Unauthorized)`);
+                    if (i < keys.length - 1) {
+                        console.log('⚠️ Trying next authentication method...');
+                        continue; // Try next key
+                    }
+                }
+                // If it's the last key or not a 401 error, throw
+                if (i === keys.length - 1) {
+                    throw error;
+                }
             }
-            throw error;
         }
     }
 

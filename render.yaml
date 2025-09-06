@@ -22,4 +22,12 @@ services:
         value: /opt/render/project/src/.puppeteer_cache
       - key: NODE_OPTIONS
         value: "--max-old-space-size=200 --expose-gc"
+      - key: SESSION_STORAGE_TYPE
+        value: jsonbin
+      - key: JSONBIN_BIN_ID
+        value: 68bb7fddd0ea881f40735642
+      - key: JSONBIN_API_KEY
+        sync: false
+      - key: JSONBIN_MASTER_KEY
+        sync: false
     healthCheckPath: /healthz
