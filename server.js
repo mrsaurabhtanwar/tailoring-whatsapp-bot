@@ -28,10 +28,6 @@ app.use((req, res, next) => {
 // Limit request body to avoid memory spikes  
 app.use(express.json({ limit: "32kb" })); // Reduced from 64kb
 
-// Start memory monitoring immediately
-setInterval(checkMemoryUsage, MEMORY_CHECK_INTERVAL);
-checkMemoryUsage(); // Initial check
-
 const Bottleneck = require("bottleneck");
 // Initialize WhatsApp client
 const whatsappClient = new RenderWhatsAppClient();

@@ -23,7 +23,7 @@ class MemoryGuardian {
         // Initial check
         this.checkMemory();
         
-        // Regular monitoring
+        // Regular monitoring - bind this context properly
         this.monitorInterval = setInterval(() => {
             if (!this.isShuttingDown) {
                 this.checkMemory();
@@ -35,43 +35,58 @@ class MemoryGuardian {
         process.on('SIGINT', () => this.gracefulShutdown('SIGINT'));
         process.on('uncaughtException', (error) => {
             console.log('🚨 Uncaught Exception:', error.message);
+            console.log('🚨 Stack trace:', error.stack);
+            this.emergencyRestart();
+        });
+        process.on('unhandledRejection', (reason, promise) => {
+            console.log('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
             this.emergencyRestart();
         });
     }
 
     checkMemory() {
-        const memUsage = process.memoryUsage();
-        const rssMemoryMB = Math.round(memUsage.rss / 1024 / 1024);
-        const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-        
-        // Log memory every 5 checks (50 seconds)
-        if (this.checkCount % 5 === 0) {
-            console.log(`🛡️ Memory: ${rssMemoryMB}MB (Heap: ${heapUsedMB}MB)`);
-        }
-        this.checkCount = (this.checkCount || 0) + 1;
-
-        if (rssMemoryMB > this.emergencyMemoryMB) {
-            console.log(`🚨 EMERGENCY MEMORY: ${rssMemoryMB}MB! Immediate restart to prevent crash!`);
-            this.emergencyRestart();
-            return;
-        }
-
-        if (rssMemoryMB > this.criticalMemoryMB) {
-            this.warningCount++;
-            console.log(`⚠️ Critical Memory: ${rssMemoryMB}MB (Warning ${this.warningCount}/${this.maxWarnings})`);
+        try {
+            const memUsage = process.memoryUsage();
+            const rssMemoryMB = Math.round(memUsage.rss / 1024 / 1024);
+            const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
             
-            // Aggressive garbage collection
-            if (typeof gc === 'function') {
-                console.log('🧹 Running emergency garbage collection...');
-                gc(true);
+            // Initialize checkCount if not exists
+            this.checkCount = (this.checkCount || 0) + 1;
+            
+            // Log memory every 5 checks (50 seconds)
+            if (this.checkCount % 5 === 0) {
+                console.log(`🛡️ Memory: ${rssMemoryMB}MB (Heap: ${heapUsedMB}MB)`);
             }
 
-            if (this.warningCount >= this.maxWarnings) {
-                console.log(`🚨 Too many memory warnings! Controlled restart...`);
-                this.controlledRestart();
+            if (rssMemoryMB > this.emergencyMemoryMB) {
+                console.log(`🚨 EMERGENCY MEMORY: ${rssMemoryMB}MB! Immediate restart to prevent crash!`);
+                this.emergencyRestart();
+                return;
             }
-        } else {
-            this.warningCount = 0; // Reset warnings if memory is normal
+
+            if (rssMemoryMB > this.criticalMemoryMB) {
+                this.warningCount++;
+                console.log(`⚠️ Critical Memory: ${rssMemoryMB}MB (Warning ${this.warningCount}/${this.maxWarnings})`);
+                
+                // Aggressive garbage collection
+                if (typeof global.gc === 'function') {
+                    console.log('🧹 Running emergency garbage collection...');
+                    global.gc(true);
+                } else if (typeof gc === 'function') {
+                    console.log('🧹 Running emergency garbage collection...');
+                    gc(true);
+                }
+
+                if (this.warningCount >= this.maxWarnings) {
+                    console.log(`🚨 Too many memory warnings! Controlled restart...`);
+                    this.controlledRestart();
+                }
+            } else {
+                this.warningCount = 0; // Reset warnings if memory is normal
+            }
+        } catch (error) {
+            console.log('❌ Memory check failed:', error.message);
+            // Don't restart on memory check errors
         }
     }
 
