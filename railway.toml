@@ -15,6 +15,12 @@ PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "false"
 # Memory optimization
 NODE_OPTIONS = "--max-old-space-size=512 --expose-gc --optimize-for-size"
 
+# Chrome/Puppeteer timeout fixes for Railway
+PUPPETEER_TIMEOUT = "60000"
+WHATSAPP_INIT_TIMEOUT = "90000"
+CHROME_DEVEL_SANDBOX = "false"
+DISPLAY = ":99"
+
 # Bot configuration
 SEND_DELAY_MS = "1000"
 SHOP_NAME = "RS Tailors & Fabric"
