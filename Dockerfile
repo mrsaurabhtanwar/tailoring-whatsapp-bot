@@ -12,6 +12,9 @@ RUN apk add --no-cache \
     dumb-init \
     curl \
     procps \
+    python3 \
+    make \
+    g++ \
     && rm -rf /var/cache/apk/*
 
 # Set optimized environment variables
@@ -25,14 +28,10 @@ ENV NODE_OPTIONS="--max-old-space-size=2048 --gc-interval=100"
 # Create app directory with proper permissions
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S appuser && \
-    adduser -S appuser -u 1001 -G appuser
-
 # Copy package files first for better caching
 COPY package*.json ./
 
-# Install dependencies with production optimizations
+# Install dependencies with production optimizations as root
 RUN npm config set fetch-retry-mintimeout 20000 && \
     npm config set fetch-retry-maxtimeout 120000 && \
     npm config set fetch-timeout 300000 && \
@@ -41,6 +40,10 @@ RUN npm config set fetch-retry-mintimeout 20000 && \
 
 # Copy application code
 COPY . .
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S appuser && \
+    adduser -S appuser -u 1001 -G appuser
 
 # Set proper ownership
 RUN chown -R appuser:appuser /app && \
