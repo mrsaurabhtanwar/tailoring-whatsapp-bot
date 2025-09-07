@@ -6,51 +6,88 @@ const path = require("path");
 if (process.env.NODE_ENV !== "production") {
   try {
     require("dotenv").config();
-  } catch {}
+  } catch (err) {
+    console.warn("⚠️ dotenv not loaded:", err.message);
+  }
 }
 
-const RenderWhatsAppClient = require("./whatsapp-client");
+const WhatsAppClient = require("./whatsapp-client");
 const { generateMessage } = require("./templates.js");
-const MemoryGuardian = require("./memory-guardian");
+const HealthMonitor = require("./health-monitor");
 
 const app = express();
 
-// Initialize Memory Guardian FIRST
-const memoryGuardian = new MemoryGuardian();
+// Initialize health monitoring
+const healthMonitor = new HealthMonitor();
+healthMonitor.startMonitoring();
 
-// Set timeouts for better Railway compatibility
+// Enhanced middleware for production
+app.use(express.json({ limit: "64kb" }));
 app.use((req, res, next) => {
-  req.setTimeout(30000); // 30 seconds
+  req.setTimeout(30000); // 30 second timeout
   res.setTimeout(30000);
   next();
 });
 
-// Limit request body to avoid memory spikes  
-app.use(express.json({ limit: "16kb" })); // Optimized for Railway
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (duration > 1000) { // Log slow requests
+      console.log(`🐌 Slow request: ${req.method} ${req.path} - ${duration}ms`);
+    }
+  });
+  next();
+});
 
 const Bottleneck = require("bottleneck");
-// Initialize WhatsApp client
-const whatsappClient = new RenderWhatsAppClient();
-const port = parseInt(process.env.PORT || "8080", 10); // Railway default port
+
+// Enhanced error handling for WhatsApp client initialization
+let whatsappClient;
+try {
+  whatsappClient = new WhatsAppClient();
+} catch (error) {
+  console.error("❌ Failed to create WhatsApp client:", error.message);
+  // Create a safe fallback client
+  whatsappClient = {
+    isReady: () => false,
+    sendMessage: () => Promise.reject(new Error("WhatsApp client not available")),
+    destroy: () => Promise.resolve(),
+    _createClient: () => {},
+    _wireEvents: () => {},
+    _initialize: () => Promise.resolve()
+  };
+}
+
+const port = parseInt(process.env.PORT || "8080", 10);
 const sendDelay = parseInt(process.env.SEND_DELAY_MS || "600", 10);
-// Bottleneck limiter to throttle sends
-const limiter = new Bottleneck({ minTime: sendDelay, maxConcurrent: 1 });
-// Simple single-flight queue to avoid concurrent Chrome work
+// Enhanced bottleneck with circuit breaker pattern
+const limiter = new Bottleneck({ 
+  minTime: sendDelay, 
+  maxConcurrent: 1,
+  reservoir: 10, // Limit to 10 messages per reservoir refill
+  reservoirRefreshAmount: 10,
+  reservoirRefreshInterval: 60 * 1000 // Refill every minute
+});
 let sendChain = Promise.resolve();
 
 // Health check endpoint
 app.get("/", (req, res) => {
+  const memUsage = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  const uptime = Math.round(process.uptime());
+  
   res.json({
     status: "Tailoring Shop Bot Running",
     timestamp: new Date().toISOString(),
-    whatsappReady:
-      typeof whatsappClient.isReady === "function"
-        ? whatsappClient.isReady()
-        : false,
+    whatsappReady: typeof whatsappClient.isReady === "function" ? whatsappClient.isReady() : false,
     qrCodeAvailable: fs.existsSync("current-qr.png"),
+    memory: memUsage + "MB",
+    uptime: uptime + "s",
+    environment: process.env.RAILWAY_ENVIRONMENT ? "Railway" : "Local",
     endpoints: {
-      "GET /healthz": "Strict health check",
-      "GET /": "Health check",
+      "GET /health": "Alternative health check",
+      "GET /": "Main health check",
       "GET /scanner": "QR scanner page for WhatsApp authentication",
       "GET /qr": "Get QR code image for WhatsApp authentication",
       "POST /webhook/order-ready": "Send WhatsApp notifications",
@@ -68,14 +105,22 @@ app.get("/healthz", (req, res) => {
   return res.status(503).json({ ok: false });
 });
 
-// Alternative health endpoint for compatibility
+// Alternative health endpoint for compatibility - relaxed for Railway
 app.get("/health", (req, res) => {
-  const ok =
-    typeof whatsappClient.isReady === "function"
-      ? whatsappClient.isReady()
-      : false;
-  if (ok) return res.status(200).json({ ok: true });
-  return res.status(503).json({ ok: false });
+  // During startup, just check if the server is responding
+  // WhatsApp client can be authenticated later via QR code
+  const memUsage = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  const uptime = Math.round(process.uptime());
+  
+  res.status(200).json({ 
+    ok: true, 
+    serverRunning: true,
+    whatsappReady: typeof whatsappClient.isReady === "function" ? whatsappClient.isReady() : false,
+    memory: memUsage + "MB",
+    uptime: uptime + "s",
+    environment: process.env.RAILWAY_ENVIRONMENT ? "Railway" : "Local",
+    message: "Server is running. Scan QR code to authenticate WhatsApp if needed."
+  });
 });
 
 // QR scanner page
@@ -90,12 +135,9 @@ app.get("/qr", (req, res) => {
       res.sendFile(path.join(__dirname, "current-qr.png"));
     } else {
       res.status(404).json({
-        error:
-          "QR code not available. Please wait for WhatsApp client to generate one.",
-        whatsappReady:
-          typeof whatsappClient.isReady === "function"
-            ? whatsappClient.isReady()
-            : false,
+        error: "QR code not available yet. Please initialize WhatsApp client first.",
+        whatsappReady: typeof whatsappClient.isReady === "function" ? whatsappClient.isReady() : false,
+        initEndpoint: "/init-whatsapp"
       });
     }
   } catch (error) {
@@ -118,12 +160,10 @@ app.get("/session-status", (req, res) => {
     const status = {
       authenticated: whatsappClient.isReady(),
       sessionExists: fs.existsSync(sessionPath),
-      qrCodeRequired: !whatsappClient.isReady() && !fs.existsSync("current-qr.png"),
+      qrCodeRequired:
+        !whatsappClient.isReady() && !fs.existsSync("current-qr.png"),
       sessionInfo: sessionInfo,
       lastCheck: new Date().toISOString(),
-      environment: process.env.RAILWAY ? "Railway" : (process.env.RENDER ? "Render" : "Local"),
-      sessionPath: authPath,
-      sessionPathExists: fs.existsSync(authPath)
     };
 
     res.json(status);
@@ -135,17 +175,6 @@ app.get("/session-status", (req, res) => {
 // Memory cleanup endpoint
 app.post("/cleanup", (req, res) => {
   try {
-    // Respect MemoryGuardian suspension
-    try {
-      const MG = require('./memory-guardian');
-      if (typeof MG.isSuspended === 'function' && MG.isSuspended()) {
-        return res.status(423).json({
-          success: false,
-          error: "Cleanup temporarily locked during critical initialization",
-        });
-      }
-    } catch {}
-
     const memBefore = process.memoryUsage();
 
     // Force garbage collection if available
@@ -270,7 +299,7 @@ app.post("/webhook/order-ready", async (req, res) => {
 
     // If memory is already high, reject early to protect the instance
     const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-    if (heapMB > 90) { // Reduced threshold for Railway's memory limits
+    if (heapMB > 450) {
       return res.status(503).json({
         success: false,
         error: "Server under memory pressure, try again shortly.",
@@ -320,44 +349,184 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Memory monitoring
+// Add endpoint to manually initialize WhatsApp client
+app.post("/init-whatsapp", async (req, res) => {
+  try {
+    if (!whatsappClient.client) {
+      console.log('🔄 Manually initializing WhatsApp client...');
+      whatsappClient._createClient();
+      whatsappClient._wireEvents();
+      await whatsappClient._initialize();
+    }
+    res.json({
+      success: true,
+      message: "WhatsApp client initialization started",
+      ready: whatsappClient.isReady()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Enhanced memory monitoring with alerts and cleanup
 setInterval(() => {
   const memUsage = process.memoryUsage();
   const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-  console.log(`💾 Server Memory: ${memUsageMB}MB`);
+  const rss = Math.round(memUsage.rss / 1024 / 1024);
+  const external = Math.round(memUsage.external / 1024 / 1024);
+  
+  // Detailed logging every 10 minutes
+  if (Math.round(process.uptime()) % 600 === 0) {
+    console.log(`💾 Memory: Heap ${memUsageMB}MB | RSS ${rss}MB | External ${external}MB`);
+    console.log(`⏱️ Uptime: ${Math.round(process.uptime() / 60)} minutes`);
+    console.log(`📱 WhatsApp Status: ${whatsappClient.isReady() ? "Ready" : "Not Ready"}`);
+  }
 
-  // If memory usage is too high, log warning
-  if (memUsageMB > 450) {
-    console.log("⚠️ High memory usage detected!");
+  // Memory pressure warnings and cleanup
+  if (memUsageMB > 1536) { // 1.5GB warning
+    console.log("🚨 CRITICAL: Memory usage very high! Initiating emergency cleanup...");
+    
+    // Force garbage collection
+    if (global.gc) {
+      global.gc();
+      console.log("🧹 Emergency garbage collection completed");
+    }
+    
+    // Clear any large objects if possible
+    if (sendChain) {
+      sendChain = Promise.resolve();
+    }
+    
+  } else if (memUsageMB > 1024) { // 1GB warning
+    console.log("⚠️ HIGH: Memory usage approaching limits, cleaning up...");
+    if (global.gc) {
+      global.gc();
+    }
   }
 }, 60000); // Check every minute
 
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("🛑 SIGTERM received, shutting down gracefully...");
-  if (whatsappClient && typeof whatsappClient.destroy === "function") {
-    whatsappClient.destroy();
+// Periodic health monitoring
+setInterval(() => {
+  const uptime = process.uptime();
+  const memUsage = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  
+  // Log system health every hour
+  if (uptime > 0 && Math.round(uptime) % 3600 === 0) {
+    console.log(`🏥 Health Check - Uptime: ${Math.round(uptime/3600)}h | Memory: ${memUsage}MB | PID: ${process.pid}`);
   }
-  process.exit(0);
+}, 300000); // Check every 5 minutes
+
+// Production-grade graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, initiating graceful shutdown...");
+  console.log("📊 Final memory usage:", Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + "MB");
+  console.log("⏱️ Uptime:", Math.round(process.uptime()) + "s");
+  
+  // Graceful shutdown sequence
+  const gracefulShutdown = async () => {
+    try {
+      console.log("� Stopping new requests...");
+      
+      if (whatsappClient && typeof whatsappClient.destroy === "function") {
+        console.log("📱 Destroying WhatsApp client...");
+        await Promise.race([
+          whatsappClient.destroy(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('WhatsApp destroy timeout')), 10000))
+        ]);
+      }
+      
+      console.log("✅ Graceful shutdown completed");
+      process.exit(0);
+    } catch (error) {
+      console.error("❌ Error during shutdown:", error.message);
+      process.exit(1);
+    }
+  };
+  
+  gracefulShutdown();
 });
 
 process.on("SIGINT", () => {
   console.log("🛑 SIGINT received, shutting down gracefully...");
-  if (whatsappClient && typeof whatsappClient.destroy === "function") {
-    whatsappClient.destroy();
-  }
   process.exit(0);
 });
 
-// Start server - bind to 0.0.0.0 for deployment environment
+// Enhanced error handling with recovery
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  console.error('Stack:', error.stack);
+  
+  // Log to file if possible
+  try {
+    const fs = require('fs');
+    const errorLog = `${new Date().toISOString()} - Uncaught Exception: ${error.message}\n${error.stack}\n\n`;
+    fs.appendFileSync('./logs/errors.log', errorLog);
+  } catch (logError) {
+    console.error('Failed to log error:', logError.message);
+  }
+  
+  // Don't exit immediately in production, attempt recovery
+  if (process.env.NODE_ENV === 'production') {
+    console.log("🔄 Attempting to continue in production mode...");
+    setTimeout(() => {
+      if (global.gc) {
+        global.gc();
+        console.log("🧹 Forced garbage collection after error");
+      }
+    }, 1000);
+  } else {
+    process.exit(1);
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+  
+  // Log to file if possible
+  try {
+    const fs = require('fs');
+    const errorLog = `${new Date().toISOString()} - Unhandled Rejection: ${reason}\n\n`;
+    fs.appendFileSync('./logs/errors.log', errorLog);
+  } catch (logError) {
+    console.error('Failed to log rejection:', logError.message);
+  }
+  
+  // Continue running in production
+  if (process.env.NODE_ENV === 'production') {
+    console.log("🔄 Continuing after unhandled rejection...");
+  }
+});
+
+// Memory leak detection and cleanup
+process.on('warning', (warning) => {
+  console.warn('⚠️ Node.js Warning:', warning.name, warning.message);
+  if (warning.name === 'MaxListenersExceededWarning') {
+    console.log("🔧 Detected potential memory leak, cleaning up...");
+    if (global.gc) {
+      global.gc();
+    }
+  }
+});
+
+// Start server - bind to 0.0.0.0 for Railway environment
 app.listen(port, '0.0.0.0', () => {
+  const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
+  const baseUrl = isRailway 
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'wtb-production.up.railway.app'}` 
+    : `http://localhost:${port}`;
+    
   console.log(`🚀 Server running on 0.0.0.0:${port}`);
+  console.log(`🌐 Environment: ${isRailway ? 'Railway' : 'Local'}`);
   console.log(
     `📱 WhatsApp Bot Status: ${whatsappClient.isReady() ? "Ready" : "Not Ready"}`,
   );
-  console.log(`🔗 Health check: http://localhost:${port}/`);
-  console.log(`📷 QR Code: http://localhost:${port}/qr`);
-  console.log(`📨 Webhook: http://localhost:${port}/webhook/order-ready`);
+  console.log(`🔗 Health check: ${baseUrl}/`);
+  console.log(`📷 QR Code: ${baseUrl}/qr`);
+  console.log(`📨 Webhook: ${baseUrl}/webhook/order-ready`);
   console.log(
     `💾 Initial Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
   );

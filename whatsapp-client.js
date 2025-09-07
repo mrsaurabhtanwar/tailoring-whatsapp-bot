@@ -1,138 +1,159 @@
-// Lightweight WhatsApp client optimized for Railway deployment
-// Features: Session persistence, memory optimization, and Railway compatibility
+// WhatsApp client implementation optimized for Railway deployment
+// Includes containerized environment support with unique Chrome profiles
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const qrcode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const ExternalSessionStorage = require('./session-storage');
-const MemoryGuardian = require('./memory-guardian');
-const SessionKeepAlive = require('./session-keepalive');
+const { Client, LocalAuth, NoAuth } = require('whatsapp-web.js');
 
-class RenderWhatsAppClient {
-    constructor() {
+class WhatsAppClient {
+    constructor(opts = {}) {
         this._ready = false;
+        this._opts = opts;
         this._qrPngPath = path.join(__dirname, 'current-qr.png');
         this._qrDataUrlPath = path.join(__dirname, 'qr-data-url.txt');
         this._sessionDir = path.join(__dirname, '.wwebjs_auth');
         this._retryCount = 0;
-        this._maxRetries = 3;
-        this._isCloudPlatform = process.env.RAILWAY || process.env.RENDER || process.env.NODE_ENV === 'production';
-        this._sessionStorage = new ExternalSessionStorage();
-        this._keepAlive = null;
+        this._maxRetries = 3; // Reduced retries for Railway
+        this._isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
+        this._isInitializing = false;
 
         // Ensure session directory exists
-        try { 
-            fs.mkdirSync(this._sessionDir, { recursive: true }); 
-        } catch (e) {
-            console.log('Session directory already exists or creation failed');
-        }
+        try { fs.mkdirSync(this._sessionDir, { recursive: true }); } catch {}
 
-        console.log(`🌐 Environment: ${this._isCloudPlatform ? (process.env.RAILWAY ? 'Railway' : 'Cloud') : 'Local'}`);
+        console.log(`🌐 Environment: ${this._isRailway ? 'Railway' : 'Local'} | Platform: ${process.platform}`);
         
-        this._createClient();
-        this._wireEvents();
-        this._initialize();
+        // Only initialize if not in Railway environment during startup
+        if (!this._isRailway) {
+            this._createClient();
+            this._wireEvents();
+            this._initialize();
+        } else {
+            console.log('🚀 Railway detected: WhatsApp client will initialize on first use');
+        }
     }
 
     _createClient() {
-        // Ultra-lightweight Puppeteer configuration for memory optimization
-    const puppeteerConfig = {
-            headless: 'new',
-            // Don't use userDataDir with LocalAuth - they're incompatible
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-web-security',
-        '--disable-features=VizDisplayCompositor,TranslateUI',
-                '--disable-extensions',
-                '--disable-plugins',
-                '--disable-images',
-                '--disable-default-apps',
-                '--disable-sync',
-                '--disable-translate',
-                '--hide-scrollbars',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--no-first-run',
-                '--memory-pressure-off',
-        '--max_old_space_size=150',
-                '--single-process',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding',
-                '--disable-background-networking',
-                '--disable-databases',
-                '--disable-file-system',
-                '--disable-notifications',
-                '--disable-permissions-api',
-                '--disable-javascript-harmony-shipping',
-                '--disable-ipc-flooding-protection',
-                '--disable-renderer-accessibility',
-                '--disable-speech-api',
-                '--disable-web-bluetooth',
-                '--disable-webgl',
-                '--disable-webgl2',
-                '--disable-accelerated-2d-canvas',
-                '--disable-accelerated-jpeg-decoding',
-                '--disable-accelerated-mjpeg-decode',
-                '--disable-accelerated-video-decode',
-                '--disable-gpu-sandbox',
-                '--disable-software-rasterizer',
-                '--disable-threaded-compositing',
-                '--disable-threaded-scrolling',
-                '--disable-checker-imaging',
-                '--disable-new-content-rendering-timeout',
-                '--disable-threaded-animation',
-                '--disable-in-process-stack-traces',
-                '--disable-histogram-customizer',
-                '--disable-gl-extensions',
-                '--disable-composited-antialiasing',
-                '--disable-canvas-aa',
-                '--disable-3d-apis',
-                '--disable-accelerated-video',
-                '--disable-gpu-compositing',
-                '--memory-pressure-off',
-                '--js-flags=--max-old-space-size=150',
-                '--disable-hang-monitor',
-                '--disable-prompt-on-repost',
-                '--disable-domain-reliability',
-                '--disable-component-extensions-with-background-pages',
-                '--disable-background-mode',
-                '--disable-client-side-phishing-detection',
-                '--disable-sync-preferences',
-        '--disable-web-resources'
-            ],
-        timeout: 180000,
-        protocolTimeout: 180000,
-            // Let Puppeteer handle Chrome download automatically
-            // Don't specify executablePath to allow auto-download
-        };
+        const isWindows = process.platform === 'win32';
+        
+        console.log(`🌐 Environment: ${this._isRailway ? 'Railway' : 'Local'} | Platform: ${process.platform}`);
+
+        // Strategy 1: Use external browser if provided (RECOMMENDED for Azure)
+        if (process.env.BROWSER_WS_URL) {
+            console.log('🔗 Using external Chrome service:', process.env.BROWSER_WS_URL);
+            this.client = new Client({
+                authStrategy: new LocalAuth({ clientId: 'tailoring-shop-bot' }),
+                puppeteer: {
+                    browserWSEndpoint: process.env.BROWSER_WS_URL,
+                    timeout: 60000,
+                    protocolTimeout: 60000
+                },
+                qrMaxRetries: 5,
+                authTimeoutMs: 120000,
+                restartOnAuthFail: true
+            });
+            return;
+        }
+
+        // Strategy 2: Production-optimized local Chrome
+        let puppeteerConfig;
+        
+        if (process.env.NODE_ENV === 'production') {
+            console.log('🔧 Using production-optimized Chrome configuration');
+            
+            puppeteerConfig = {
+                headless: 'new',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-extensions',
+                    '--disable-default-apps',
+                    '--disable-plugins',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--hide-scrollbars',
+                    '--mute-audio',
+                    '--no-default-browser-check',
+                    '--no-first-run',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                    '--disable-ipc-flooding-protection',
+                    '--single-process',
+                    '--memory-pressure-off',
+                    '--max_old_space_size=1024',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-accelerated-2d-canvas',
+                    '--disable-accelerated-jpeg-decoding',
+                    '--disable-accelerated-mjpeg-decode',
+                    '--disable-accelerated-video-decode'
+                ],
+                timeout: 60000,
+                protocolTimeout: 60000,
+                handleSIGINT: false,
+                handleSIGTERM: false,
+                handleSIGHUP: false
+            };
+        } else if (isWindows) {
+            // Windows local development
+            const chromePaths = [
+                'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+            ];
+            
+            const executablePath = chromePaths.find(p => {
+                try { return fs.existsSync(p); } catch { return false; }
+            });
+
+            puppeteerConfig = {
+                headless: 'new',
+                args: ['--no-sandbox', '--disable-setuid-sandbox'],
+                executablePath: executablePath,
+                timeout: 60000
+            };
+        } else {
+            // Linux development configuration
+            const { execSync } = require('child_process');
+            let executablePath = null;
+            
+            try {
+                executablePath = execSync('which chromium', { encoding: 'utf8' }).trim();
+                console.log('🔍 Found Chromium at:', executablePath);
+            } catch (e) {
+                console.log('⚠️ System Chromium not found, using Puppeteer default');
+            }
+            
+            puppeteerConfig = {
+                headless: 'new',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu'
+                ],
+                timeout: 60000,
+                protocolTimeout: 60000
+            };
+            
+            if (executablePath) {
+                puppeteerConfig.executablePath = executablePath;
+            }
+        }
 
         this.client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: 'tailoring-shop-bot',
-                dataPath: this._sessionDir
-            }),
+            authStrategy: new LocalAuth({ clientId: 'tailoring-shop-bot' }),
             puppeteer: puppeteerConfig,
-            qrMaxRetries: 5,
-            authTimeoutMs: 180000,
-            restartOnAuthFail: false,
-            takeoverOnConflict: false,
-            takeoverTimeoutMs: 60000, // Increased timeout
-            // Add session persistence options
-            session: null,
-            // Add connection stability options
-            ffmpegPath: null,
-            bypassCSP: true,
-            // Memory optimization options
-            webVersionCache: {
-                type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-            }
+            qrMaxRetries: this._isRailway ? 10 : 5,
+            authTimeoutMs: this._isRailway ? 300000 : 120000,
+            restartOnAuthFail: true,
+            takeoverOnConflict: true,
+            takeoverTimeoutMs: 0
         });
     }
 
@@ -145,15 +166,11 @@ class RenderWhatsAppClient {
                 console.log('📱 QR Code received! Generating files...');
                 
                 // Save QR to PNG for /qr endpoint
-                await qrcode.toFile(this._qrPngPath, qr, { 
-                    type: 'png', 
-                    errorCorrectionLevel: 'M',
-                    width: 256
-                });
+                await qrcode.toFile(this._qrPngPath, qr, { type: 'png', errorCorrectionLevel: 'H' });
                 console.log('✅ QR PNG saved');
                 
                 // Also store data URL
-                const dataUrl = await qrcode.toDataURL(qr, { width: 256 });
+                const dataUrl = await qrcode.toDataURL(qr);
                 fs.writeFileSync(this._qrDataUrlPath, dataUrl, 'utf8');
                 console.log('✅ QR data URL saved');
                 
@@ -169,30 +186,13 @@ class RenderWhatsAppClient {
             }
         };
 
-        this._onReady = async () => {
+        this._onReady = () => {
             this._ready = true;
-            try { 
-                if (fs.existsSync(this._qrPngPath)) fs.unlinkSync(this._qrPngPath); 
-            } catch {}
+            try { if (fs.existsSync(this._qrPngPath)) fs.unlinkSync(this._qrPngPath); } catch {}
             console.log('✅ WhatsApp client is ready.');
-            
-            // Start session keep-alive
-            if (!this._keepAlive) {
-                this._keepAlive = new SessionKeepAlive(this);
-                console.log('💓 Session Keep-Alive: Started');
-            }
-            
-            // Save session data to external storage with a delay
-            setTimeout(async () => {
-                try {
-                    await this._saveSessionToExternal();
-                } catch (error) {
-                    console.log('⚠️ Failed to save session to external storage:', error.message);
-                }
-            }, 10000); // Wait 10 seconds for session to fully stabilize
         };
 
-        this._onAuthenticated = async () => {
+        this._onAuthenticated = () => {
             console.log('🔒 WhatsApp authenticated.');
         };
 
@@ -205,25 +205,7 @@ class RenderWhatsAppClient {
         this._onDisconnected = (reason) => {
             this._ready = false;
             console.warn('⚠️ WhatsApp disconnected:', reason);
-            
-            // Stop keep-alive on disconnect
-            if (this._keepAlive) {
-                this._keepAlive.stopKeepAlive();
-                this._keepAlive = null;
-            }
-            
-            // Don't restart immediately for certain disconnect reasons
-            if (reason === 'NAVIGATION' || reason === 'LOGOUT') {
-                console.log('🔄 WhatsApp logout detected, will require re-authentication');
-                return;
-            }
-            
-            // Add delay before handling failure to prevent rapid restarts
-            setTimeout(() => {
-                if (!this._ready) {
-                    this._handleFailure();
-                }
-            }, 5000); // Wait 5 seconds before attempting restart
+            this._handleFailure();
         };
 
         this.client.on('qr', this._onQr);
@@ -235,16 +217,16 @@ class RenderWhatsAppClient {
 
     _handleFailure() {
         if (this._retryCount >= this._maxRetries) {
-            console.error('❌ Max retries reached. Please check Render configuration.');
+            console.error('❌ Max retries reached. Please check Railway configuration.');
             console.log('💡 Solutions:');
-            console.log('   1. Check if session files are properly persisted');
-            console.log('   2. Ensure Render has sufficient memory allocation');
-            console.log('   3. Try redeploying the application');
+            console.log('   1. Add BROWSER_WS_URL environment variable with a remote Chrome service');
+            console.log('   2. Check Railway deployment logs for Chrome/Puppeteer issues');
+            console.log('   3. Use local development for initial WhatsApp setup');
             return;
         }
 
         this._retryCount++;
-        const delay = Math.min(15000 * this._retryCount, 60000); // Max 1 minute delay
+        const delay = Math.min(30000 * this._retryCount, 120000); // Exponential backoff, max 2 min
         
         console.log(`🔄 Retry ${this._retryCount}/${this._maxRetries} in ${delay/1000}s...`);
         
@@ -257,116 +239,21 @@ class RenderWhatsAppClient {
     }
 
     async _initialize() {
+        if (this._isInitializing) return;
+        this._isInitializing = true;
+        
         try {
             console.log('🚀 Initializing WhatsApp client...');
-            // Suspend memory guardian early to avoid GC during all startup steps
-            MemoryGuardian.suspend('whatsapp-init');
-            
-            // Add startup delay to allow system to stabilize
-            console.log('⏳ Waiting for system to stabilize...');
-            await new Promise(resolve => setTimeout(resolve, 8000)); // 8 second delay
-            
-            // Try to restore session from external storage first
-            if (this._isCloudPlatform) {
-                console.log('🔄 Attempting to restore session from external storage...');
-                const restored = await this._loadSessionFromExternal();
-                if (restored) {
-                    console.log('✅ Session restored successfully from external storage');
-                } else {
-                    console.log('ℹ️ No existing session found, will require QR scan');
-                    console.log('💡 After authentication, session will be saved for future deployments');
-                }
+            if (this.client) {
+                await this.client.initialize();
             }
-            
-            // Initialize with timeout and retry logic
-            console.log('🔄 Starting WhatsApp client initialization...');
-            await this._initializeWithRetry();
-            
         } catch (err) {
             console.error('❌ Failed to initialize WhatsApp client:', err.message);
-            this._handleFailure();
+            if (!this._isRailway) {
+                this._handleFailure();
+            }
         } finally {
-            // Always resume after initialization flow completes
-            MemoryGuardian.resume('whatsapp-init');
-        }
-    }
-
-    async _initializeWithRetry() {
-    const maxRetries = 3;
-    const retryDelay = 10000; // 10 seconds
-        
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-                console.log(`🔄 Initialization attempt ${attempt}/${maxRetries}...`);
-                
-                // Add debugging for initialization stages
-                console.log('🌐 Creating Chrome browser instance...');
-                
-                // Set a timeout for the initialization
-                const initPromise = this.client.initialize();
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Initialization timeout')), 180000);
-                });
-                
-                await Promise.race([initPromise, timeoutPromise]);
-                console.log('✅ WhatsApp client initialized successfully');
-                return;
-                
-            } catch (error) {
-                console.log(`❌ Initialization attempt ${attempt} failed:`, error.message);
-                
-                if (attempt === maxRetries) {
-                    // On final attempt, try clearing session and starting fresh
-                    console.log('🔄 Final attempt: Clearing session and starting fresh...');
-                    await this._clearSessionAndRetry();
-                    throw error;
-                }
-                
-                console.log(`⏳ Waiting ${retryDelay/1000}s before retry...`);
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-                
-                // Try to clean up before retry
-                try {
-                    if (this.client) {
-                        await this.client.destroy();
-                    }
-                } catch (cleanupError) {
-                    console.log('⚠️ Cleanup error:', cleanupError.message);
-                }
-                
-                // Recreate client for retry
-                this._createClient();
-                this._wireEvents();
-            }
-        }
-    }
-
-    async _clearSessionAndRetry() {
-        try {
-            console.log('🧹 Clearing potentially corrupted session...');
-            
-            // Clear local session files
-            const sessionPath = path.join(this._sessionDir, 'session-tailoring-shop-bot');
-            if (fs.existsSync(sessionPath)) {
-                fs.rmSync(sessionPath, { recursive: true, force: true });
-                console.log('✅ Local session cleared');
-            }
-            
-            // Clear external session storage
-            await this._sessionStorage.clearSession();
-            console.log('✅ External session cleared');
-            
-            // Recreate client without session
-            this._createClient();
-            this._wireEvents();
-            
-            console.log('🔄 Retrying initialization with fresh session...');
-            await this.client.initialize();
-            console.log('✅ Fresh session initialization successful');
-            
-        } catch (error) {
-            console.log('❌ Fresh session initialization failed:', error.message);
-            throw error;
+            this._isInitializing = false;
         }
     }
 
@@ -388,15 +275,21 @@ class RenderWhatsAppClient {
     }
 
     async sendMessage(chatId, message) {
+        if (!this.client) {
+            // Lazy initialize for Railway
+            if (this._isRailway && !this._isInitializing) {
+                console.log('🔄 Lazy initializing WhatsApp client for Railway...');
+                this._createClient();
+                this._wireEvents();
+                await this._initialize();
+                // Wait a bit for initialization
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+        
         if (!this.isReady()) {
-            throw new Error('WhatsApp client not ready');
+            throw new Error('WhatsApp client not ready. Please scan QR code first.');
         }
-        
-        // Update keep-alive activity
-        if (this._keepAlive) {
-            this._keepAlive.updateActivity();
-        }
-        
         return this.client.sendMessage(chatId, message);
     }
 
@@ -406,119 +299,17 @@ class RenderWhatsAppClient {
         } catch {}
         
         // Wait a bit before recreating
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 5000));
         
         this._createClient();
         this._wireEvents();
         await this._initialize();
     }
 
-    async _saveSessionToExternal() {
-        try {
-            console.log('💾 Preparing to save session to external storage...');
-            // Give the session files time to be written
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // Read session files and save to external storage
-            const sessionData = {};
-            
-            if (fs.existsSync(this._sessionDir)) {
-                const sessionPath = path.join(this._sessionDir, 'session-tailoring-shop-bot');
-                if (fs.existsSync(sessionPath)) {
-                    console.log('📁 Reading session files from:', sessionPath);
-                    
-                    // Only read essential session files to minimize memory usage
-                    const essentialFiles = [
-                        'Default/Preferences',
-                        'Default/Local Storage/leveldb/CURRENT',
-                        'Default/Local Storage/leveldb/MANIFEST-000001',
-                        'Local State'
-                    ];
-                    
-                    for (const file of essentialFiles) {
-                        const fullPath = path.join(sessionPath, file);
-                        if (fs.existsSync(fullPath)) {
-                            try {
-                                const stat = fs.statSync(fullPath);
-                                // Only read files smaller than 512KB to prevent memory issues
-                                if (stat.isFile() && stat.size > 0 && stat.size < 512 * 1024) {
-                                    const fileData = fs.readFileSync(fullPath);
-                                    sessionData[file] = fileData.toString('base64');
-                                    console.log(`✅ Read session file: ${file} (${stat.size} bytes)`);
-                                } else if (stat.size >= 512 * 1024) {
-                                    console.log(`⚠️ Skipping large file: ${file} (${stat.size} bytes)`);
-                                }
-                            } catch (e) {
-                                console.log(`⚠️ Could not read session file: ${file} - ${e.message}`);
-                            }
-                        }
-                    }
-                } else {
-                    console.log('⚠️ Session directory not found:', sessionPath);
-                }
-            } else {
-                console.log('⚠️ Base session directory not found:', this._sessionDir);
-            }
-            
-            if (Object.keys(sessionData).length > 0) {
-                console.log(`💾 Saving ${Object.keys(sessionData).length} session files to external storage...`);
-                await this._sessionStorage.saveSession(sessionData);
-                console.log('✅ Session saved to external storage successfully');
-            } else {
-                console.log('⚠️ No session data found to save - session may not be fully initialized yet');
-            }
-        } catch (error) {
-            console.log('⚠️ Failed to save session data:', error.message);
-        }
-    }
-
-    async _loadSessionFromExternal() {
-        try {
-            const sessionData = await this._sessionStorage.loadSession();
-            if (sessionData && Object.keys(sessionData).length > 0) {
-                // Restore session files
-                const sessionPath = path.join(this._sessionDir, 'session-tailoring-shop-bot');
-                fs.mkdirSync(sessionPath, { recursive: true });
-                
-                for (const [relativePath, base64Data] of Object.entries(sessionData)) {
-                    try {
-                        const filePath = path.join(sessionPath, relativePath);
-                        const dir = path.dirname(filePath);
-                        fs.mkdirSync(dir, { recursive: true });
-                        
-                        // Convert from base64 back to binary
-                        const fileData = Buffer.from(base64Data, 'base64');
-                        fs.writeFileSync(filePath, fileData);
-                        console.log(`✅ Restored session file: ${relativePath}`);
-                    } catch (e) {
-                        console.log(`⚠️ Failed to restore session file: ${relativePath} - ${e.message}`);
-                    }
-                }
-                
-                console.log('✅ Session restored from external storage');
-                return true;
-            }
-        } catch (error) {
-            console.log('⚠️ Failed to load session from external storage:', error.message);
-        }
-        return false;
-    }
-
     async destroy() {
         try {
-            // Stop keep-alive first
-            if (this._keepAlive) {
-                this._keepAlive.stopKeepAlive();
-                this._keepAlive = null;
-            }
-            
-            // Save session before destroying
-            if (this._ready) {
-                await this._saveSessionToExternal();
-            }
-            
             if (this.client) {
-                // Remove listeners safely
+                // Remove event listeners safely
                 try {
                     this.client.removeListener('qr', this._onQr);
                     this.client.removeListener('ready', this._onReady);
@@ -526,23 +317,38 @@ class RenderWhatsAppClient {
                     this.client.removeListener('auth_failure', this._onAuthFailure);
                     this.client.removeListener('disconnected', this._onDisconnected);
                 } catch (e) {
-                    console.log('⚠️ Error removing listeners:', e.message);
+                    console.warn('⚠️ Error removing event listeners:', e.message);
                 }
                 
                 // Destroy client safely
                 try {
-                    await this.client.destroy();
+                    await Promise.race([
+                        this.client.destroy(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Destroy timeout')), 5000))
+                    ]);
                 } catch (e) {
-                    console.log('⚠️ Error destroying client:', e.message);
+                    console.warn('⚠️ Error during client destroy:', e.message);
+                }
+            }
+            
+            // Cleanup temporary user data directory if it exists
+            if (this._userDataDir && fs.existsSync(this._userDataDir)) {
+                try {
+                    fs.rmSync(this._userDataDir, { recursive: true, force: true });
+                    console.log('🧹 Cleaned up temporary Chrome profile');
+                } catch (cleanupErr) {
+                    console.warn('⚠️ Could not clean up Chrome profile:', cleanupErr.message);
                 }
             }
         } catch (err) {
-            console.log('⚠️ Error during WhatsApp client destroy:', err.message);
+            console.error('Error during WhatsApp client destroy:', err.message);
         } finally {
             this.client = null;
             this._ready = false;
+            this._userDataDir = null;
+            this._isInitializing = false;
         }
     }
 }
 
-module.exports = RenderWhatsAppClient;
+module.exports = WhatsAppClient;

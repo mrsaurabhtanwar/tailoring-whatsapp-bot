@@ -1,94 +1,64 @@
-# Railway-optimized Dockerfile for WhatsApp Bot
-FROM node:20-slim
+# Production-ready Dockerfile for Azure deployment
+FROM node:20-alpine
 
-# Install Chrome dependencies and utilities in a single layer
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
+# Install Chrome and dependencies for Puppeteer with enhanced stability
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
     ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libc6 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libfontconfig1 \
-    libgbm1 \
-    libgcc1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libstdc++6 \
-    libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
-    libxrandr2 \
-    libxrender1 \
-    libxss1 \
-    libxtst6 \
-    lsb-release \
-    xdg-utils \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+    ttf-freefont \
+    dumb-init \
+    curl \
+    procps \
+    && rm -rf /var/cache/apk/*
 
-# Create app directory
+# Set optimized environment variables
+ENV NODE_ENV=production
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PORT=8080
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NODE_OPTIONS="--max-old-space-size=2048 --gc-interval=100"
+
+# Create app directory with proper permissions
 WORKDIR /app
 
 # Create non-root user for security
-RUN groupadd -r botuser && useradd -r -g botuser -G audio,video botuser \
-    && mkdir -p /home/botuser/Downloads \
-    && chown -R botuser:botuser /home/botuser \
-    && chown -R botuser:botuser /app
+RUN addgroup -g 1001 -S appuser && \
+    adduser -S appuser -u 1001 -G appuser
 
-# Copy package files
+# Copy package files first for better caching
 COPY package*.json ./
 
-# Install dependencies with optimized settings for Railway
-# Remove package-lock.json if it exists to avoid version conflicts
-RUN rm -f package-lock.json && \
-    npm config set fetch-retry-mintimeout 20000 && \
-    npm config set fetch-retry-maxtimeout 120000 && \
-    npm config set fetch-timeout 300000 && \
-    npm install --only=production --no-audit --no-fund --no-package-lock
+# Install dependencies with production optimizations
+RUN npm ci --only=production --no-audit --no-fund --ignore-scripts && \
+    npm cache clean --force
 
-# Copy application files
-COPY --chown=botuser:botuser . .
+# Copy application code
+COPY . .
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /app/.wwebjs_auth /app/sessions /app/temp \
-    && chown -R botuser:botuser /app/.wwebjs_auth /app/sessions /app/temp \
-    && chmod -R 755 /app/.wwebjs_auth /app/sessions /app/temp
+# Set proper ownership
+RUN chown -R appuser:appuser /app && \
+    chmod +x /app/server.js
 
 # Switch to non-root user
-USER botuser
+USER appuser
 
-# Environment variables for Railway
-ENV NODE_ENV=production \
-    RAILWAY=true \
-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false \
-    SESSION_DIR=/app/sessions \
-    PORT=8080
+# Create necessary directories
+RUN mkdir -p /app/.wwebjs_auth /app/logs && \
+    chmod 755 /app/.wwebjs_auth /app/logs
 
-# Health check optimized for Railway
-HEALTHCHECK --interval=60s --timeout=15s --start-period=120s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:${PORT:-8080}/healthz', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})" || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Expose port
 EXPOSE 8080
 
-# Start the application with Railway-optimized memory settings
-CMD ["node", "--max-old-space-size=512", "--expose-gc", "--optimize-for-size", "server.js"]
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["npm", "start"]

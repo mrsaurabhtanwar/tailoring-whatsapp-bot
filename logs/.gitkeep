@@ -1,0 +1,2 @@
+# Create logs directory
+mkdir -p logs

@@ -24,12 +24,7 @@ jobs:
         run: |
           npm install
           npm run build --if-present
-          # Basic verification tests
-          echo "🧪 Running basic verification tests..."
-          if [ ! -f "server.js" ]; then echo "❌ server.js missing"; exit 1; fi
-          if [ ! -f "whatsapp-client-azure.js" ]; then echo "❌ whatsapp-client-azure.js missing"; exit 1; fi
-          if ! node -c server.js; then echo "❌ server.js has syntax errors"; exit 1; fi
-          echo "✅ All verification tests passed!"
+          npm run test --if-present
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4

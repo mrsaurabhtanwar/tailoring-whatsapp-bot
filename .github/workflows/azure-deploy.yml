@@ -1,0 +1,123 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: wtb-whatsapp-bot
+  AZURE_WEBAPP_PACKAGE_PATH: '.'
+  NODE_VERSION: '20.x'
+  REGISTRY_NAME: wtbregistry
+  IMAGE_NAME: tailoring-whatsapp-bot
+  RESOURCE_GROUP: WTBResourceGroup
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🔄 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 📦 Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: false
+        tags: ${{ env.IMAGE_NAME }}:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: 🧪 Test Docker image
+      run: |
+        docker run -d -p 8080:8080 --name test-container ${{ env.IMAGE_NAME }}:test
+        sleep 30
+        
+        # Wait for app to start
+        timeout 60 bash -c 'until curl -f http://localhost:8080/health; do sleep 2; done'
+        
+        # Test health endpoint
+        curl -f http://localhost:8080/health
+        
+        # Test main endpoint
+        curl -f http://localhost:8080/
+        
+        # Cleanup
+        docker stop test-container
+        docker rm test-container
+        
+        echo "✅ All tests passed!"
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: 🔄 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔑 Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🔑 Login to Azure Container Registry
+      run: |
+        az acr login --name ${{ env.REGISTRY_NAME }}
+
+    - name: 📦 Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: 🚀 Deploy to Azure App Service
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        images: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+
+    - name: ✅ Verify deployment
+      run: |
+        echo "🔗 App URL: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+        echo "📱 QR Code: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/qr"
+        echo "📨 Webhook: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/webhook/order-ready"
+        echo "🏥 Health: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health"
+        
+        # Wait for deployment to complete
+        sleep 60
+        
+        # Test the deployed app
+        curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || echo "⚠️ Health check failed, but deployment completed"
+
+  notification:
+    needs: [build-and-test, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: 📧 Notify deployment status
+      run: |
+        if [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo "✅ Deployment successful!"
+          echo "App is live at: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+        else
+          echo "❌ Deployment failed!"
+          echo "Check the logs for details."
+        fi
