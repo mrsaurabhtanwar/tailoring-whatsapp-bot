@@ -23,7 +23,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV PORT=8080
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
-ENV NODE_OPTIONS="--max-old-space-size=2048 --gc-interval=100"
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Create app directory with proper permissions
 WORKDIR /app
