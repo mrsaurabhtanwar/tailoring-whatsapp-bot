@@ -1,5 +1,5 @@
-// Lightweight WhatsApp client optimized for Railway deployment
-// Features: Session persistence, memory optimization, and Railway compatibility
+// Lightweight WhatsApp client optimized for cloud deployment
+// Features: Session persistence, memory optimization, and container compatibility
 
 const fs = require('fs');
 const path = require('path');
@@ -18,7 +18,7 @@ class RenderWhatsAppClient {
         this._sessionDir = path.join(__dirname, '.wwebjs_auth');
         this._retryCount = 0;
         this._maxRetries = 3;
-        this._isCloudPlatform = process.env.RAILWAY || process.env.RENDER || process.env.NODE_ENV === 'production';
+    this._isCloudPlatform = process.env.RENDER || process.env.NODE_ENV === 'production';
         this._sessionStorage = new ExternalSessionStorage();
         this._keepAlive = null;
 
@@ -29,7 +29,7 @@ class RenderWhatsAppClient {
             console.log('Session directory already exists or creation failed');
         }
 
-        console.log(`🌐 Environment: ${this._isCloudPlatform ? (process.env.RAILWAY ? 'Railway' : 'Cloud') : 'Local'}`);
+    console.log(`🌐 Environment: ${this._isCloudPlatform ? 'Cloud' : 'Local'}`);
         
         this._createClient();
         this._wireEvents();

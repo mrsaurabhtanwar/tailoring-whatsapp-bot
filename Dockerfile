@@ -1,4 +1,4 @@
-# Railway-optimized Dockerfile for WhatsApp Bot
+# Dockerfile for WhatsApp Bot (cloud-ready)
 FROM node:20-slim
 
 # Install Chrome dependencies and utilities in a single layer
@@ -57,7 +57,7 @@ RUN groupadd -r botuser && useradd -r -g botuser -G audio,video botuser \
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies with optimized settings for Railway
+# Install dependencies with optimized settings for cloud builds
 # Remove package-lock.json if it exists to avoid version conflicts
 RUN rm -f package-lock.json && \
     npm config set fetch-retry-mintimeout 20000 && \
@@ -76,19 +76,18 @@ RUN mkdir -p /app/.wwebjs_auth /app/sessions /app/temp \
 # Switch to non-root user
 USER botuser
 
-# Environment variables for Railway
+# Runtime environment variables
 ENV NODE_ENV=production \
-    RAILWAY=true \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false \
     SESSION_DIR=/app/sessions \
     PORT=8080
 
-# Health check optimized for Railway
+# Health check
 HEALTHCHECK --interval=60s --timeout=15s --start-period=120s --retries=3 \
     CMD node -e "require('http').get('http://localhost:${PORT:-8080}/healthz', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})" || exit 1
 
 # Expose port
 EXPOSE 8080
 
-# Start the application with Railway-optimized memory settings
+# Start the application with memory optimization
 CMD ["node", "--max-old-space-size=512", "--expose-gc", "--optimize-for-size", "server.js"]
