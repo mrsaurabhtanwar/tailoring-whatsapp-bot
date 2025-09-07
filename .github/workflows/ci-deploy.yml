@@ -28,6 +28,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: 📦 Install dependencies
         run: npm ci
@@ -59,7 +60,6 @@ jobs:
     name: "🚀 Build & Deploy to Azure"
     env:
       AZURE_WEBAPP_NAME: tailoring-whats-bot
-      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'DefaultResourceGroup-CIN' }}
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -69,6 +69,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: 📦 Install dependencies
         run: npm ci --production
@@ -115,7 +116,6 @@ jobs:
         run: |
           echo "🔍 Validating required inputs..."
           echo "Detected AZURE_WEBAPP_NAME='${AZURE_WEBAPP_NAME}'"
-          echo "Detected AZURE_RESOURCE_GROUP='${AZURE_RESOURCE_GROUP}'"
           if [ -z "${AZURE_WEBAPP_NAME}" ]; then echo "❌ Missing AZURE_WEBAPP_NAME (set a repository variable named AZURE_WEBAPP_NAME or hard-code app-name)."; exit 1; fi
           if [ ! -f whatsapp-bot.zip ]; then echo "❌ Deployment package missing (whatsapp-bot.zip)."; exit 1; fi
           if [ -z "${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}" ]; then echo "❌ Secret AZURE_WEBAPP_PUBLISH_PROFILE not defined. In Azure Portal > App Service > Overview > Get publish profile, copy XML into repo secret."; exit 1; fi
@@ -231,7 +231,6 @@ jobs:
           echo "🎉 DEPLOYMENT SUMMARY"
           echo "===================="
           echo "App Name: ${{ env.AZURE_WEBAPP_NAME }}"
-          echo "Resource Group: ${{ env.AZURE_RESOURCE_GROUP }}"
           echo "App URL: ${{ steps.health-check.outputs.app-url }}"
           echo "Health URL: ${{ steps.health-check.outputs.health-url }}"
           echo "Deployment Status: ${{ steps.health-check.outputs.success == 'true' && '✅ Success' || '❌ Failed' }}"
