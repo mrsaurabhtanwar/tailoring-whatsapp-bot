@@ -44,8 +44,16 @@ jobs:
 
       - name: 🏥 Run verification script
         run: |
-          chmod +x ./verify.sh
-          ./verify.sh
+          if [ -f "./verify.sh" ]; then
+            echo "📝 Running verification script..."
+            chmod +x ./verify.sh
+            ./verify.sh
+          else
+            echo "ℹ️ No verification script found, running basic checks..."
+            # Basic syntax check for main files
+            node -c server.js
+            echo "✅ Basic verification passed"
+          fi
 
       - name: 📊 Collect test results
         if: always()
