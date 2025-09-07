@@ -33,7 +33,7 @@ RUN addgroup -g 1001 -S appuser && \
 COPY package*.json ./
 
 # Install dependencies with production optimizations
-RUN npm ci --only=production --no-audit --no-fund --ignore-scripts && \
+RUN npm install --only=production --no-audit --no-fund --ignore-scripts && \
     npm cache clean --force
 
 # Copy application code
