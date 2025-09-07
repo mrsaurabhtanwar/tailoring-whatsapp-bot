@@ -33,7 +33,10 @@ RUN addgroup -g 1001 -S appuser && \
 COPY package*.json ./
 
 # Install dependencies with production optimizations
-RUN npm install --only=production --no-audit --no-fund --ignore-scripts && \
+RUN npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-timeout 300000 && \
+    npm install --only=production --no-audit --no-fund && \
     npm cache clean --force
 
 # Copy application code
