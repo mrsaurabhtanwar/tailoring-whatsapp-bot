@@ -5,8 +5,16 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:
-    {}
+  workflow_dispatc      - name: 🔍 Validate deployment inputs
+        run: |
+          echo "🔍 Validating required inputs..."
+          echo "Detected AZURE_WEBAPP_NAME='${AZURE_WEBAPP_NAME}'"
+          if [ -z "${AZURE_WEBAPP_NAME}" ]; then echo "❌ Missing AZURE_WEBAPP_NAME (set a repository variable named AZURE_WEBAPP_NAME or hard-code app-name)."; exit 1; fi
+          if [ ! -d "deployment" ]; then echo "❌ Deployment directory missing."; exit 1; fi
+          if [ -z "${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}" ]; then echo "❌ Secret AZURE_WEBAPP_PUBLISH_PROFILE not defined. In Azure Portal > App Service > Overview > Get publish profile, copy XML into repo secret."; exit 1; fi
+          echo "✅ All required inputs present." 
+          # Show app name for clarity
+          echo "App Name: ${AZURE_WEBAPP_NAME}"
 
 env:
   NODE_VERSION: '20'
@@ -93,32 +101,53 @@ jobs:
 
       - name: 📦 Create deployment package
         run: |
-          echo "📦 Creating deployment ZIP..."
+          echo "📦 Preparing deployment files..."
           
-          # Create deployment zip excluding development files
-          zip -r whatsapp-bot.zip . \
-            -x ".git/*" \
-            -x ".github/*" \
-            -x "*.log" \
-            -x ".env*" \
-            -x "package.json.backup" \
-            -x ".wwebjs_auth/*" \
-            -x "current-qr.png" \
-            -x "verify.sh" \
-            -x "deploy.sh" \
-            -x "cleanup-and-start.*" \
-            -x "post-build.sh" \
-            -x "test-*.js" \
-            -x "test*/**" \
-            -x "*.zip"
+          # Create a clean directory for deployment
+          mkdir -p deployment
           
-          # Check zip size
-          ZIP_SIZE=$(du -h whatsapp-bot.zip | cut -f1)
-          echo "✅ Deployment package created: whatsapp-bot.zip ($ZIP_SIZE)"
+          # Copy only necessary files for deployment
+          cp package.json deployment/
+          cp package-lock.json deployment/
+          cp server.js deployment/
+          cp whatsapp-client.js deployment/
+          cp templates.js deployment/
+          cp health-monitor.js deployment/
+          cp memory-guardian.js deployment/
+          cp session-keepalive.js deployment/
+          cp session-storage.js deployment/
+          cp chromium-session-manager.js deployment/
+          cp qr-scanner.html deployment/
           
-          # Verify zip contents
-          echo "📋 Package contents:"
-          unzip -l whatsapp-bot.zip | head -20
+          # Copy any additional JS files
+          find . -maxdepth 1 -name "*.js" -not -name "test-*" -exec cp {} deployment/ \;
+          
+          # Create web.config for Azure
+          cat > deployment/web.config << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <system.webServer>
+              <handlers>
+                <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>
+              </handlers>
+              <rewrite>
+                <rules>
+                  <rule name="DynamicContent">
+                    <conditions>
+                      <add input="{{REQUEST_FILENAME}}" matchType="IsFile" negate="True"/>
+                    </conditions>
+                    <action type="Rewrite" url="server.js"/>
+                  </rule>
+                </rules>
+              </rewrite>
+              <iisnode nodeProcessCommandLine="node --max-old-space-size=2048"/>
+            </system.webServer>
+          </configuration>
+          EOF
+          
+          echo "✅ Deployment files prepared"
+          echo "📋 Deployment contents:"
+          ls -la deployment/
 
       - name: � Validate deployment inputs
         run: |
@@ -137,7 +166,7 @@ jobs:
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: ./whatsapp-bot.zip
+          package: ./deployment
 
       - name: 🏥 Post-deployment health check
         id: health-check
