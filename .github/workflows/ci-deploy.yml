@@ -109,6 +109,7 @@ jobs:
           # Copy only necessary files for deployment
           cp package.json deployment/
           cp package-lock.json deployment/
+          cp startup.js deployment/
           cp server.js deployment/
           cp whatsapp-client.js deployment/
           cp templates.js deployment/
@@ -128,7 +129,7 @@ jobs:
           <configuration>
             <system.webServer>
               <handlers>
-                <add name="iisnode" path="server.js" verb="*" modules="iisnode"/>
+                <add name="iisnode" path="startup.js" verb="*" modules="iisnode"/>
               </handlers>
               <rewrite>
                 <rules>
@@ -136,11 +137,20 @@ jobs:
                     <conditions>
                       <add input="{{REQUEST_FILENAME}}" matchType="IsFile" negate="True"/>
                     </conditions>
-                    <action type="Rewrite" url="server.js"/>
+                    <action type="Rewrite" url="startup.js"/>
                   </rule>
                 </rules>
               </rewrite>
-              <iisnode nodeProcessCommandLine="node --max-old-space-size=2048"/>
+              <iisnode 
+                nodeProcessCommandLine="node --max-old-space-size=1024"
+                watchedFiles="*.js"
+                loggingEnabled="true"
+                logDirectory="iisnode"
+                maxLogFiles="10"
+                maxLogFileSize="5MB"
+                devErrorsEnabled="true"
+                debuggingEnabled="false"
+              />
             </system.webServer>
           </configuration>
           EOF

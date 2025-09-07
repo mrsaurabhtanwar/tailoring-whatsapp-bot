@@ -4,8 +4,9 @@
   "description": "WhatsApp automation for tailoring shop",
   "main": "server.js",
   "scripts": {
-    "start": "node --max-old-space-size=2048 server.js",
-    "dev": "node server.js"
+    "start": "node startup.js",
+    "dev": "node server.js",
+    "azure-start": "node --max-old-space-size=1024 startup.js"
   },
   "dependencies": {
     "axios": "^1.7.7",
