@@ -60,6 +60,9 @@ function startServer() {
     require('./server.js');
   } catch (error) {
     console.error(`❌ Server startup failed (attempt ${startAttempts}):`, error.message);
+    if (error && error.stack) {
+      console.error(error.stack);
+    }
     
     if (startAttempts < maxAttempts) {
       console.log(`⏳ Retrying in 5 seconds...`);

@@ -37,8 +37,7 @@ Thumbs.db
 # Azure
 .azure/
 
-# Railway (old deployment)
-.railway-deploy
+# (removed) Railway
 
 # Development files
 qr-scanner.html

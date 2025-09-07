@@ -1,12 +1,10 @@
-// WhatsApp client implementation optimized for Railway deployment
-// Includes containerized environment support with unique Chrome profiles
+// WhatsApp client implementation optimized for Azure and Local environments
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const qrcode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
-const { Client, LocalAuth, NoAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 
 class WhatsAppClient {
     constructor(opts = {}) {
@@ -16,29 +14,29 @@ class WhatsAppClient {
         this._qrDataUrlPath = path.join(__dirname, 'qr-data-url.txt');
         this._sessionDir = path.join(__dirname, '.wwebjs_auth');
         this._retryCount = 0;
-        this._maxRetries = 3; // Reduced retries for Railway
-        this._isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
-        this._isInitializing = false;
+    this._maxRetries = 3;
+    this._isAzure = !!(process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_HOSTNAME || process.env.WEBSITES_PORT);
+    this._isInitializing = false;
 
         // Ensure session directory exists
         try { fs.mkdirSync(this._sessionDir, { recursive: true }); } catch {}
 
-        console.log(`🌐 Environment: ${this._isRailway ? 'Railway' : 'Local'} | Platform: ${process.platform}`);
+    const envName = this._isAzure ? 'Azure' : 'Local';
+    console.log(`🌐 Environment: ${envName} | Platform: ${process.platform}`);
         
-        // Only initialize if not in Railway environment during startup
-        if (!this._isRailway) {
+    // Only initialize immediately for Local during startup
+    if (!this._isAzure) {
             this._createClient();
             this._wireEvents();
             this._initialize();
         } else {
-            console.log('🚀 Railway detected: WhatsApp client will initialize on first use');
+            console.log('🚀 Azure detected: WhatsApp client will initialize on first use');
         }
     }
 
     _createClient() {
         const isWindows = process.platform === 'win32';
         
-        console.log(`🌐 Environment: ${this._isRailway ? 'Railway' : 'Local'} | Platform: ${process.platform}`);
 
         // Strategy 1: Use external browser if provided (RECOMMENDED for Azure)
         if (process.env.BROWSER_WS_URL) {
@@ -149,8 +147,8 @@ class WhatsAppClient {
         this.client = new Client({
             authStrategy: new LocalAuth({ clientId: 'tailoring-shop-bot' }),
             puppeteer: puppeteerConfig,
-            qrMaxRetries: this._isRailway ? 10 : 5,
-            authTimeoutMs: this._isRailway ? 300000 : 120000,
+            qrMaxRetries: 5,
+            authTimeoutMs: 120000,
             restartOnAuthFail: true,
             takeoverOnConflict: true,
             takeoverTimeoutMs: 0
@@ -217,10 +215,10 @@ class WhatsAppClient {
 
     _handleFailure() {
         if (this._retryCount >= this._maxRetries) {
-            console.error('❌ Max retries reached. Please check Railway configuration.');
+            console.error('❌ Max retries reached. Please check cloud environment configuration.');
             console.log('💡 Solutions:');
             console.log('   1. Add BROWSER_WS_URL environment variable with a remote Chrome service');
-            console.log('   2. Check Railway deployment logs for Chrome/Puppeteer issues');
+            console.log('   2. Check deployment logs for Chrome/Puppeteer issues');
             console.log('   3. Use local development for initial WhatsApp setup');
             return;
         }
@@ -249,7 +247,7 @@ class WhatsAppClient {
             }
         } catch (err) {
             console.error('❌ Failed to initialize WhatsApp client:', err.message);
-            if (!this._isRailway) {
+            if (!this._isAzure) {
                 this._handleFailure();
             }
         } finally {
@@ -276,9 +274,9 @@ class WhatsAppClient {
 
     async sendMessage(chatId, message) {
         if (!this.client) {
-            // Lazy initialize for Railway
-            if (this._isRailway && !this._isInitializing) {
-                console.log('🔄 Lazy initializing WhatsApp client for Railway...');
+            // Lazy initialize for Azure
+            if (this._isAzure && !this._isInitializing) {
+                console.log(`🔄 Lazy initializing WhatsApp client for Azure...`);
                 this._createClient();
                 this._wireEvents();
                 await this._initialize();

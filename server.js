@@ -17,6 +17,11 @@ const HealthMonitor = require("./health-monitor");
 
 const app = express();
 
+// Ensure logs directory exists to avoid write errors
+try {
+  fs.mkdirSync(path.join(__dirname, 'logs'), { recursive: true });
+} catch {}
+
 // Initialize health monitoring
 const healthMonitor = new HealthMonitor();
 healthMonitor.startMonitoring();
@@ -77,6 +82,7 @@ app.get("/", (req, res) => {
   const memUsage = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
   const uptime = Math.round(process.uptime());
   
+  const isAzure = process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_HOSTNAME;
   res.json({
     status: "Tailoring Shop Bot Running",
     timestamp: new Date().toISOString(),
@@ -84,7 +90,7 @@ app.get("/", (req, res) => {
     qrCodeAvailable: fs.existsSync("current-qr.png"),
     memory: memUsage + "MB",
     uptime: uptime + "s",
-    environment: process.env.RAILWAY_ENVIRONMENT ? "Railway" : "Local",
+  environment: isAzure ? 'Azure' : 'Local',
     endpoints: {
       "GET /health": "Alternative health check",
       "GET /": "Main health check",
@@ -105,20 +111,21 @@ app.get("/healthz", (req, res) => {
   return res.status(503).json({ ok: false });
 });
 
-// Alternative health endpoint for compatibility - relaxed for Railway
+// Alternative health endpoint for compatibility
 app.get("/health", (req, res) => {
   // During startup, just check if the server is responding
   // WhatsApp client can be authenticated later via QR code
   const memUsage = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
   const uptime = Math.round(process.uptime());
   
+  const isAzure2 = process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_HOSTNAME;
   res.status(200).json({ 
     ok: true, 
     serverRunning: true,
     whatsappReady: typeof whatsappClient.isReady === "function" ? whatsappClient.isReady() : false,
     memory: memUsage + "MB",
     uptime: uptime + "s",
-    environment: process.env.RAILWAY_ENVIRONMENT ? "Railway" : "Local",
+  environment: isAzure2 ? 'Azure' : 'Local',
     message: "Server is running. Scan QR code to authenticate WhatsApp if needed."
   });
 });
@@ -512,15 +519,15 @@ process.on('warning', (warning) => {
   }
 });
 
-// Start server - bind to 0.0.0.0 for Railway environment
+// Start server - bind to 0.0.0.0 for cloud environments
 app.listen(port, '0.0.0.0', () => {
-  const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
-  const baseUrl = isRailway 
-    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'wtb-production.up.railway.app'}` 
+  const isAzure = process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_HOSTNAME;
+  const baseUrl = isAzure
+    ? `https://${process.env.WEBSITE_HOSTNAME}`
     : `http://localhost:${port}`;
     
   console.log(`🚀 Server running on 0.0.0.0:${port}`);
-  console.log(`🌐 Environment: ${isRailway ? 'Railway' : 'Local'}`);
+  console.log(`🌐 Environment: ${isAzure ? 'Azure' : 'Local'}`);
   console.log(
     `📱 WhatsApp Bot Status: ${whatsappClient.isReady() ? "Ready" : "Not Ready"}`,
   );
